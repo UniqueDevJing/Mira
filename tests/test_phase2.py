@@ -10,7 +10,7 @@ print('=' * 60)
 # Config
 LLM_URL = "https://tokenhub.itcast.cn/v1"
 LLM_MODEL = "deepseek-v4-flash"
-LLM_KEY = "sk-46be1cbfe489e032287846c7a894a3b32e46319c6e26d8a6"
+LLM_KEY = os.environ.get("RAG_LLM_API_KEY", "")
 
 # 1. PDF 解析
 print('\n[1] 文档解析...')

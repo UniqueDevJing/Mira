@@ -25,15 +25,19 @@ ENTITY_PROMPT = """从文本中抽取所有实体，返回JSON数组。每个实
 
 文本：{text}
 
-只返回JSON数组，不要其他文字。"""
+重要：只返回JSON数组，不要其他文字。示例格式：
+[{"name":"张三","type":"Person","aliases":["张总"]},{"name":"Python","type":"Technology","aliases":[]}]"""
 
-RELATION_PROMPT = """已知实体: {entities}
+RELATION_PROMPT = """已知实体列表: {entities}
 
-从文本中抽取实体间关系，返回JSON数组。每个关系包含subject(主体)、predicate(关系: uses/supplies/signs/references/contains/depends_on)、object(客体)。
+从文本中抽取实体间的关系，返回JSON数组。每个关系包含subject(主体)、predicate(关系类型)、object(客体)。
+
+关系类型：uses(使用), supplies(供应), signs(签署), references(引用), contains(包含), depends_on(依赖), employs(雇佣), owns(拥有)
 
 文本：{text}
 
-只返回JSON数组。"""
+重要：只返回JSON数组，不要其他文字。示例格式：
+[{"subject":"系统","predicate":"uses","object":"Python"},{"subject":"FastAPI","predicate":"depends_on","object":"Uvicorn"}]"""
 
 
 class EntityExtractor:

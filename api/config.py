@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # LLM
     llm_base_url: str = "https://tokenhub.itcast.cn/v1"
     llm_model: str = "deepseek-v4-flash"
-    llm_api_key: str = "sk-46be1cbfe489e032287846c7a894a3b32e46319c6e26d8a6"
+    llm_api_key: str = ""  # 通过环境变量 RAG_LLM_API_KEY 或 .env 文件注入
 
     # Embedding
     embedding_model: str = "BAAI/bge-small-zh-v1.5"

@@ -32,6 +32,10 @@ class HybridRetriever:
                 deduped.append(d)
                 seen.add(key)
 
+        # Reranker 精排
+        if self.reranker and deduped:
+            deduped = self.reranker.rerank(query, deduped, top_k)
+
         return {"documents": deduped[:top_k], "graph_context": graph_context}
 
     def _vector_retrieve(self, query: str, top_k: int) -> List[dict]:

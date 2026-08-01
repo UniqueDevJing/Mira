@@ -1,8 +1,13 @@
 """RAG 2.0 API 入口"""
+import os
+os.environ.setdefault('HF_HUB_OFFLINE', '1')
+os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.responses import FileResponse
 from api.routes import documents, qa
 
 
@@ -10,6 +15,15 @@ from api.routes import documents, qa
 async def lifespan(app: FastAPI):
     from api.config import settings
     print(f"启动 RAG 2.0 服务 — 模型: {settings.llm_model}")
+
+    # 预热模型（确保所有模型在请求到来前加载完毕）
+    try:
+        from engines.embedding.embedder import EmbeddingService
+        EmbeddingService().embed_query('warmup')
+        print("模型预热完成")
+    except Exception as e:
+        print(f"模型预热跳过: {e}")
+
     yield
     print("服务关闭")
 
@@ -29,3 +43,10 @@ app.include_router(qa.router)
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/")
+async def root():
+    import os
+    web_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "index.html")
+    return FileResponse(web_path)

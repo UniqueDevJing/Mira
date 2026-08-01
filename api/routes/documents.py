@@ -3,11 +3,11 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+_docs = {}
 
 
 @router.post("/upload")
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     department: str = Form(""),
     tags: str = Form(""),
@@ -15,13 +15,45 @@ async def upload_document(
 ):
     doc_id = str(uuid.uuid4())[:12]
     content = await file.read()
-    background_tasks.add_task(_process_document_pipeline, doc_id, file.filename, content)
-    return {"doc_id": doc_id, "status": "processing", "estimated_time": 15}
+
+    _docs[doc_id] = {"doc_id": doc_id, "filename": file.filename, "status": "processing"}
+
+    # 同步处理
+    try:
+        result = _process_document_pipeline(doc_id, file.filename, content)
+        _docs[doc_id].update(status="ready",
+                            page_count=result.get("pages", 0),
+                            chunk_count=result.get("chunks", 0))
+    except Exception as e:
+        _docs[doc_id].update(status="failed")
+        import traceback
+        traceback.print_exc()
+        return {"doc_id": doc_id, "status": "failed", "error": str(e)[:200]}
+
+    return {"doc_id": doc_id, "status": "ready", "estimated_time": 0}
 
 
 @router.get("/{doc_id}/status")
 async def get_document_status(doc_id: str):
-    return {"doc_id": doc_id, "status": "completed", "chunk_count": 0}
+    if doc_id in _docs:
+        d = _docs[doc_id]
+        return {"doc_id": d["doc_id"], "filename": d["filename"],
+                "status": d["status"],
+                "page_count": d.get("page_count"),
+                "chunk_count": d.get("chunk_count")}
+    return {"doc_id": doc_id, "status": "not_found", "chunk_count": 0}
+
+
+@router.get("")
+async def list_documents(page: int = 1, size: int = 20):
+    items = list(_docs.values())
+    total = len(items)
+    start = (page - 1) * size
+    return {
+        "items": [{"doc_id": d["doc_id"], "filename": d["filename"],
+                   "status": d["status"]} for d in items[start:start+size]],
+        "total": total
+    }
 
 
 def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
@@ -59,5 +91,7 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
 
         os.unlink(tmp.name)
         print(f"[{doc_id}] 处理完成")
+        return {"pages": len(uir.pages), "chunks": len(chunks)}
     except Exception as e:
         print(f"[{doc_id}] 处理失败: {e}")
+        raise

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG 2.0 — 智能知识库</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+<style>
+  .fade-in { animation: fadeIn 0.3s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .markdown pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; }
+  .markdown code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- 顶部导航 -->
+<nav class="bg-white shadow-sm border-b">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <i class="fa fa-database text-blue-600 text-2xl"></i>
+      <span class="text-xl font-bold text-gray-800">RAG 2.0</span>
+      <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">智能知识库</span>
+    </div>
+    <div class="flex items-center gap-4 text-sm text-gray-500">
+      <span id="apiStatus" class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span> 检测中
+      </span>
+      <span id="docCount" class="hidden">| <span id="docCountNum">0</span> 文档</span>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+
+<!-- 标签切换 -->
+<div class="flex gap-2 mb-6">
+  <button onclick="switchTab('upload')" id="tab-upload" class="tab-btn px-5 py-2 rounded-lg font-medium text-sm transition bg-blue-600 text-white">
+    <i class="fa fa-cloud-upload mr-1"></i> 文档上传
+  </button>
+  <button onclick="switchTab('ask')" id="tab-ask" class="tab-btn px-5 py-2 rounded-lg font-medium text-sm transition bg-white text-gray-600 hover:bg-gray-100">
+    <i class="fa fa-comments mr-1"></i> 知识问答
+  </button>
+  <button onclick="switchTab('docs')" id="tab-docs" class="tab-btn px-5 py-2 rounded-lg font-medium text-sm transition bg-white text-gray-600 hover:bg-gray-100">
+    <i class="fa fa-folder-open mr-1"></i> 文档管理
+  </button>
+</div>
+
+<!-- 文档上传 Tab -->
+<div id="panel-upload" class="fade-in">
+  <div class="bg-white rounded-xl shadow-sm p-8 border">
+    <div class="max-w-xl mx-auto text-center">
+      <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl p-12 hover:border-blue-400 hover:bg-blue-50 transition cursor-pointer">
+        <i class="fa fa-file-pdf-o text-5xl text-gray-300 mb-4"></i>
+        <p class="text-gray-600 mb-1">拖拽文件到此处或点击上传</p>
+        <p class="text-xs text-gray-400">支持 PDF、DOCX、PPTX、XLSX、PNG、JPG、HTML</p>
+        <input type="file" id="fileInput" class="hidden" accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg,.html"
+               onchange="handleFileSelect(this)">
+      </div>
+      <div id="selectedFile" class="hidden mt-4 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+        <span id="selectedFileName" class="text-sm text-gray-700 truncate"></span>
+        <button onclick="clearFile()" class="text-gray-400 hover:text-red-500"><i class="fa fa-times"></i></button>
+      </div>
+      <button onclick="uploadFile()" id="uploadBtn" disabled
+              class="mt-4 px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition">
+        <i class="fa fa-rocket mr-1"></i> 上传并解析
+      </button>
+      <div id="uploadResult" class="hidden mt-4"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 知识问答 Tab -->
+<div id="panel-ask" class="hidden fade-in">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 对话区 -->
+    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border flex flex-col" style="min-height: 500px;">
+      <div id="chatArea" class="flex-1 p-4 overflow-y-auto space-y-4" style="max-height: 500px;">
+        <div class="text-center text-gray-400 py-12">
+          <i class="fa fa-commenting-o text-4xl mb-3"></i>
+          <p>上传文档后即可开始提问</p>
+        </div>
+      </div>
+      <div class="border-t p-4">
+        <div class="flex gap-2">
+          <input id="questionInput" type="text" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')askQuestion()"
+                 class="flex-1 px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <button onclick="askQuestion()" id="askBtn"
+                  class="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition">
+            <i class="fa fa-send"></i>
+          </button>
+        </div>
+        <div class="flex gap-4 mt-2 text-xs text-gray-400">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="radio" name="mode" value="hybrid" checked> 混合检索
+          </label>
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="radio" name="mode" value="dense"> 稠密检索
+          </label>
+          <span class="ml-auto">Top-K: <select id="topK" class="border rounded px-1 py-0.5">
+            <option>3</option><option selected>5</option><option>10</option><option>20</option>
+          </select></span>
+        </div>
+      </div>
+    </div>
+    <!-- 来源面板 -->
+    <div class="bg-white rounded-xl shadow-sm border p-4" style="max-height: 560px; overflow-y: auto;">
+      <h3 class="font-medium text-gray-700 mb-3"><i class="fa fa-file-text-o mr-1"></i> 参考来源</h3>
+      <div id="sourcesPanel" class="text-sm text-gray-400">等待提问...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 文档管理 Tab -->
+<div id="panel-docs" class="hidden fade-in">
+  <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+    <div class="p-4 border-b flex justify-between items-center">
+      <h3 class="font-medium"><i class="fa fa-list mr-1"></i> 文档列表</h3>
+      <button onclick="refreshDocList()" class="text-blue-600 text-sm hover:underline">
+        <i class="fa fa-refresh mr-1"></i>刷新
+      </button>
+    </div>
+    <div id="docList" class="divide-y text-sm">
+      <div class="p-8 text-center text-gray-400">点击刷新加载文档列表</div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+const API = 'http://127.0.0.1:8000/api/v1';
+let selectedFile = null;
+
+// 初始化
+(async () => {
+  try { const r = await fetch('http://127.0.0.1:8000/health');
+    document.getElementById('apiStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> API 在线';
+  } catch(e) { document.getElementById('apiStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API 离线'; }
+})();
+
+// 标签切换
+function switchTab(tab) {
+  ['upload','ask','docs'].forEach(t => {
+    document.getElementById('panel-'+t).classList.add('hidden');
+    document.getElementById('tab-'+t).className = 'tab-btn px-5 py-2 rounded-lg font-medium text-sm transition bg-white text-gray-600 hover:bg-gray-100';
+  });
+  document.getElementById('panel-'+tab).classList.remove('hidden');
+  document.getElementById('tab-'+tab).className = 'tab-btn px-5 py-2 rounded-lg font-medium text-sm transition bg-blue-600 text-white';
+  if (tab === 'docs') refreshDocList();
+}
+
+// 文件处理
+const dropZone = document.getElementById('dropZone');
+dropZone.onclick = () => document.getElementById('fileInput').click();
+dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('border-blue-400','bg-blue-50'); };
+dropZone.ondragleave = () => dropZone.classList.remove('border-blue-400','bg-blue-50');
+dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('border-blue-400','bg-blue-50');
+  if (e.dataTransfer.files.length) handleFileSelect({files: e.dataTransfer.files}); };
+
+function handleFileSelect(input) {
+  selectedFile = input.files ? input.files[0] : null;
+  if (selectedFile) {
+    document.getElementById('selectedFileName').textContent = selectedFile.name;
+    document.getElementById('selectedFile').classList.remove('hidden');
+    document.getElementById('uploadBtn').disabled = false;
+  }
+}
+function clearFile() { selectedFile = null; document.getElementById('selectedFile').classList.add('hidden');
+  document.getElementById('uploadBtn').disabled = true; }
+
+// 上传
+async function uploadFile() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i> 解析中...';
+  const fd = new FormData(); fd.append('file', selectedFile);
+  try {
+    const r = await fetch(API+'/documents/upload', {method:'POST',body:fd});
+    const data = await r.json();
+    document.getElementById('uploadResult').classList.remove('hidden');
+    document.getElementById('uploadResult').innerHTML = `
+      <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-left">
+        <p class="font-medium text-green-800"><i class="fa fa-check-circle mr-1"></i> 上传成功</p>
+        <p class="text-sm text-green-600 mt-1">文档ID: <code class="bg-green-100 px-1 rounded">${data.doc_id}</code></p>
+        <p class="text-sm text-green-600">状态: ${data.status}</p>
+      </div>`;
+    clearFile();
+    refreshDocList();
+  } catch(e) {
+    document.getElementById('uploadResult').classList.remove('hidden');
+    document.getElementById('uploadResult').innerHTML = `<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">上传失败: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="fa fa-rocket mr-1"></i> 上传并解析';
+}
+
+// 问答
+async function askQuestion() {
+  const q = document.getElementById('questionInput').value.trim();
+  if (!q) return;
+  const chat = document.getElementById('chatArea');
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const topK = parseInt(document.getElementById('topK').value);
+
+  if (chat.querySelector('.text-center')) chat.innerHTML = '';
+  chat.innerHTML += `<div class="flex justify-end fade-in"><div class="bg-blue-600 text-white rounded-lg px-4 py-2 max-w-md">${q}</div></div>`;
+  document.getElementById('questionInput').value = '';
+  document.getElementById('askBtn').disabled = true;
+
+  const thinkingId = 'thinking_'+Date.now();
+  chat.innerHTML += `<div id="${thinkingId}" class="flex gap-2 fade-in text-gray-400 text-sm"><i class="fa fa-spinner fa-spin"></i> 思考中...</div>`;
+  chat.scrollTop = chat.scrollHeight;
+
+  try {
+    const r = await fetch(API+'/qa/ask', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question: q, top_k: topK, mode: mode, enable_self_retrieval: false})});
+    const data = await r.json();
+    document.getElementById(thinkingId).remove();
+
+    chat.innerHTML += `<div class="fade-in"><div class="bg-white border rounded-lg p-4 shadow-sm"><div class="text-gray-800 whitespace-pre-wrap">${data.answer}</div>
+      <div class="text-xs text-gray-400 mt-2">${data.latency_ms}ms · ${data.sources.length} 来源</div></div></div>`;
+
+    // 更新来源面板
+    const sp = document.getElementById('sourcesPanel');
+    sp.innerHTML = data.sources.map((s,i) => `
+      <div class="mb-3 p-2 bg-gray-50 rounded text-xs">
+        <span class="font-mono text-blue-600">[${s.score.toFixed(3)}]</span>
+        <span class="text-gray-500 ml-1">Chunk: ${s.chunk_id.slice(-8)}</span>
+        <p class="text-gray-600 mt-1">${s.content.slice(0,150)}...</p>
+      </div>`).join('') || '无来源';
+  } catch(e) {
+    document.getElementById(thinkingId).remove();
+    chat.innerHTML += `<div class="text-red-500 text-sm fade-in">请求失败: ${e.message}</div>`;
+  }
+  document.getElementById('askBtn').disabled = false;
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// 文档列表
+async function refreshDocList() {
+  const el = document.getElementById('docList');
+  try {
+    const r = await fetch(API+'/documents');
+    const data = await r.json();
+    document.getElementById('docCount').classList.remove('hidden');
+    document.getElementById('docCountNum').textContent = data.total;
+    if (!data.items.length) { el.innerHTML = '<div class="p-8 text-center text-gray-400">暂无文档，请先上传</div>'; return; }
+    el.innerHTML = data.items.map(d => `
+      <div class="p-4 flex items-center justify-between hover:bg-gray-50">
+        <div class="flex items-center gap-3">
+          <i class="fa ${d.status==='ready'?'fa-check-circle text-green-500':'fa-spinner fa-spin text-yellow-500'}"></i>
+          <span class="font-medium">${d.filename}</span>
+          <span class="text-xs px-2 py-0.5 rounded ${d.status==='ready'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}">${d.status==='ready'?'就绪':d.status}</span>
+        </div>
+        <span class="text-xs text-gray-400 font-mono">${d.doc_id}</span>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div class="p-8 text-center text-red-400">加载失败: ${e.message}</div>`; }
+}
+</script>
+</body>
+</html>

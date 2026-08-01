@@ -30,13 +30,15 @@ async def ask_question(req: QARequest):
     from engines.embedding.embedder import EmbeddingService
     from engines.retrieval.vector_store import VectorStore
     from engines.retrieval.hybrid_retriever import HybridRetriever
+    from engines.retrieval.reranker import Reranker
     from engines.retrieval.evaluator import RetrievalEvaluator
     from engines.retrieval.query_rewriter import QueryRewriter
     from engines.retrieval.self_retrieval import SelfRetrieval
 
     embedder = EmbeddingService()
     vector_store = VectorStore()
-    retriever = HybridRetriever(vector_store=vector_store, embedder=embedder)
+    reranker = Reranker(embedder=embedder)
+    retriever = HybridRetriever(vector_store=vector_store, embedder=embedder, reranker=reranker)
     evaluator = RetrievalEvaluator(embedder=embedder)
     rewriter = QueryRewriter()
 
