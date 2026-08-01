@@ -1,0 +1,96 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MILVUS_HOST=milvus-standalone
+      - MILVUS_PORT=19530
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password123
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - DATABASE_URL=postgresql+asyncpg://raguser:ragpass@postgres:5432/rag20
+    depends_on:
+      - milvus-standalone
+      - neo4j
+      - redis
+      - minio
+      - postgres
+    volumes:
+      - ./:/app
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+    environment:
+      - MILVUS_HOST=milvus-standalone
+      - NEO4J_URI=bolt://neo4j:7687
+    depends_on:
+      - redis
+      - postgres
+    command: celery -A api.tasks worker --loglevel=info --concurrency=4
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.4.0
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+    depends_on:
+      - etcd
+      - minio
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379
+    ports:
+      - "2379:2379"
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/password123
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: rag20
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpass
