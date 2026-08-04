@@ -1,5 +1,6 @@
 """OCR 处理器：基于 PaddleOCR 的扫描件文本提取"""
 import hashlib
+import logging
 from pathlib import Path
 
 import cv2
@@ -7,10 +8,13 @@ import numpy as np
 import fitz
 from paddleocr import PaddleOCR
 
+logger = logging.getLogger(__name__)
+
 
 class OCRProcessor:
-    def __init__(self, lang: str = "ch"):
-        self.ocr = PaddleOCR(use_angle_cls=True, lang=lang, use_gpu=True, show_log=False)
+    def __init__(self, lang: str = "ch", use_gpu: bool = False):
+        self.ocr = PaddleOCR(use_angle_cls=True, lang=lang, use_gpu=use_gpu, show_log=False)
+        logger.info("PaddleOCR 初始化: lang=%s, gpu=%s", lang, use_gpu)
 
     def process(self, file_path: str):
         from engines.parsing.pdf_parser import UIRDocument

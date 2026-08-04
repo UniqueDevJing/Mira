@@ -5,6 +5,10 @@ venv/
 .env
 .env/
 *.db
+lancedb_data/
 *.egg-info/
 dist/
 *.pdf
+
+# 测试输出缓存
+tests/last_test_results.json

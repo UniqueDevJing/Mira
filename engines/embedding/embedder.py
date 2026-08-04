@@ -1,21 +1,31 @@
 """文本嵌入服务 — 全局单例模式，避免事件循环内加载模型"""
+import logging
+from threading import Lock
 from typing import List
+
+from engines.interfaces import EmbedderInterface
+
+logger = logging.getLogger(__name__)
 
 # 模块级预加载（在 asyncio 事件循环之外）
 _model = None
 _model_name = None
+_model_lock = Lock()
 
 
 def _get_model(model_name: str = "BAAI/bge-small-zh-v1.5", device: str = "cpu"):
     global _model, _model_name
     if _model is None or _model_name != model_name:
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(model_name, device=device)
-        _model_name = model_name
+        with _model_lock:
+            if _model is None or _model_name != model_name:
+                from sentence_transformers import SentenceTransformer
+                logger.info("加载 Embedding 模型: %s", model_name)
+                _model = SentenceTransformer(model_name, device=device)
+                _model_name = model_name
     return _model
 
 
-class EmbeddingService:
+class EmbeddingService(EmbedderInterface):
     def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5", device: str = "cpu"):
         self.model_name = model_name
         self.device = device

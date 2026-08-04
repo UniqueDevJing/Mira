@@ -1,19 +1,13 @@
 """知识问答 API"""
-import time, httpx
-from typing import Optional, List
+import time
+import logging
 from fastapi import APIRouter
-from pydantic import BaseModel
 
+from api.schemas.qa import QARequest, QAResponse, SourceDocument, TokenUsage
+from api.core.llm_client import get_llm_client, CircuitBreakerOpenError
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/qa", tags=["qa"])
-
-
-class QARequest(BaseModel):
-    question: str
-    mode: str = "hybrid"
-    enable_self_retrieval: bool = True
-    top_k: int = 10
-    filters: Optional[dict] = None
-
 
 RAG_SYSTEM_PROMPT = """你是专业的知识库助手。严格根据以下参考文档回答用户问题。
 - 有明确答案：直接引用并标注来源
@@ -22,23 +16,43 @@ RAG_SYSTEM_PROMPT = """你是专业的知识库助手。严格根据以下参考
 - 回答简洁，控制在 300 字以内"""
 
 
-@router.post("/ask")
+@router.post("/ask", response_model=QAResponse)
 async def ask_question(req: QARequest):
     start = time.time()
 
     # 构建检索流水线
     from engines.embedding.embedder import EmbeddingService
-    from engines.retrieval.vector_store import VectorStore
     from engines.retrieval.hybrid_retriever import HybridRetriever
     from engines.retrieval.reranker import Reranker
     from engines.retrieval.evaluator import RetrievalEvaluator
     from engines.retrieval.query_rewriter import QueryRewriter
     from engines.retrieval.self_retrieval import SelfRetrieval
+    from api.state import get_graph_rag, get_vector_store
 
     embedder = EmbeddingService()
-    vector_store = VectorStore()
+    vector_store = get_vector_store()
     reranker = Reranker(embedder=embedder)
-    retriever = HybridRetriever(vector_store=vector_store, embedder=embedder, reranker=reranker)
+    graph_rag = get_graph_rag()
+
+    # 根据 mode 构建检索器
+    if req.mode == "vector":
+        from engines.retrieval.hybrid_retriever import HybridRetriever
+        retriever = HybridRetriever(
+            vector_store=vector_store, graph_retriever=None,
+            embedder=embedder, reranker=reranker,
+        )
+    elif req.mode == "graph":
+        from engines.retrieval.hybrid_retriever import HybridRetriever
+        retriever = HybridRetriever(
+            vector_store=None, graph_retriever=graph_rag,
+            embedder=embedder, reranker=reranker,
+        )
+    else:  # hybrid
+        retriever = HybridRetriever(
+            vector_store=vector_store, graph_retriever=graph_rag,
+            embedder=embedder, reranker=reranker,
+        )
+
     evaluator = RetrievalEvaluator(embedder=embedder)
     rewriter = QueryRewriter()
 
@@ -52,45 +66,59 @@ async def ask_question(req: QARequest):
     docs = result.get("documents", [])[:req.top_k]
 
     # LLM 生成答案
-    from api.config import settings
     context = "\n\n---\n\n".join(
         f"[来源{i+1}] {d.get('content', '')[:800]}" for i, d in enumerate(docs[:5])
     ) if docs else ""
 
+    token_usage = None
     if context:
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    f"{settings.llm_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                    json={
-                        "model": settings.llm_model,
-                        "messages": [
-                            {"role": "system", "content": RAG_SYSTEM_PROMPT},
-                            {"role": "user", "content": f"参考文档：\n{context}\n\n问题：{req.question}"}
-                        ],
-                        "max_tokens": 2000, "temperature": 0.3
-                    }
-                )
-            data = resp.json()
-            if isinstance(data, str):
-                import json
-                data = json.loads(data)
-            answer = data["choices"][0]["message"]["content"]
+            llm_client = get_llm_client()
+            llm_response = await llm_client.chat(
+                messages=[
+                    {"role": "system", "content": RAG_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"参考文档：\n{context}\n\n问题：{req.question}"}
+                ],
+                temperature=0.3,
+                max_tokens=2000,
+            )
+            answer = llm_response.content
             if not answer:
                 answer = "（推理中）增加 max_tokens 后重试"
+
+            token_usage = TokenUsage(
+                prompt_tokens=llm_response.prompt_tokens,
+                completion_tokens=llm_response.completion_tokens,
+                total_tokens=llm_response.total_tokens,
+                llm_latency_ms=llm_response.latency_ms,
+            )
+
+            logger.info(
+                "QA 生成完成: tokens_in=%d, tokens_out=%d, total=%d, latency=%.1fms",
+                llm_response.prompt_tokens, llm_response.completion_tokens,
+                llm_response.total_tokens, llm_response.latency_ms
+            )
+        except CircuitBreakerOpenError:
+            answer = f"（LLM 服务暂时不可用）检索到 {len(docs)} 条相关内容。"
+            logger.warning("QA 降级: LLM 熔断中")
         except Exception as e:
-            answer = f"（LLM 暂时不可用）检索到 {len(docs)} 条相关内容。错误: {str(e)[:100]}"
+            answer = f"（LLM 暂时不可用）检索到 {len(docs)} 条相关内容。"
+            logger.error("QA LLM 调用失败: %s", str(e)[:200])
     else:
         answer = "未在知识库中找到相关信息，请先上传文档。"
 
     latency_ms = (time.time() - start) * 1000
 
-    return {
-        "answer": answer,
-        "sources": docs[:req.top_k],
-        "graph_context": result.get("graph_context"),
-        "retrieval_rounds": result.get("retrieval_rounds", 1),
-        "rewritten_queries": [],
-        "latency_ms": round(latency_ms, 2),
-    }
+    return QAResponse(
+        answer=answer,
+        sources=[SourceDocument(
+            id=d.get("id", ""), chunk_id=d.get("chunk_id", ""),
+            doc_id=d.get("doc_id", ""), content=d.get("content", ""),
+            score=d.get("score", 0.0),
+        ) for d in docs[:req.top_k]],
+        graph_context=result.get("graph_context"),
+        retrieval_rounds=result.get("retrieval_rounds", 1),
+        rewritten_queries=result.get("rewritten_queries", []),
+        latency_ms=round(latency_ms, 2),
+        token_usage=token_usage,
+    )

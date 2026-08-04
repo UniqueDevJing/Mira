@@ -1,68 +1,91 @@
-"""Milvus 向量存储 — 使用 Milvus Lite（嵌入式，无需 Docker）"""
+"""向量存储 — LanceDB 嵌入式（零锁冲突，持久化，支持并发）"""
 import time
-from typing import List
-from pymilvus import MilvusClient, DataType
+import logging
+from typing import List, Optional
+import lancedb
+
+from engines.interfaces import VectorStoreInterface
+
+logger = logging.getLogger(__name__)
 
 
-class VectorStore:
-    def __init__(self, uri: str = "./milvus.db"):
-        """uri 为本地文件路径时使用 Milvus Lite；http://host:port 时连接远程 Milvus"""
-        self.client = MilvusClient(uri=uri)
-        self.collection_name = "documents"
-        self._ensure_collection()
+class VectorStore(VectorStoreInterface):
+    def __init__(self, uri: str = "./lancedb_data", dim: int = 512):
+        self.uri = uri
+        self.dim = dim
+        self.table_name = "documents"
+        self.db = lancedb.connect(uri)
+        self._table = self._ensure_table()
 
-    def _ensure_collection(self):
-        if self.client.has_collection(self.collection_name):
-            self.client.load_collection(self.collection_name)
+    @property
+    def table(self):
+        """延迟刷新表引用，支持多进程写入后读取"""
+        return self.db.open_table(self.table_name)
+
+    def _ensure_table(self):
+        try:
+            return self.db.open_table(self.table_name)
+        except Exception as e:
+            logger.info("表 %s 不存在，创建新表: %s", self.table_name, str(e)[:100])
+            import numpy as np
+            import pyarrow as pa
+            schema = pa.schema([
+                pa.field("id", pa.string()),
+                pa.field("doc_id", pa.string()),
+                pa.field("content", pa.string()),
+                pa.field("embedding", pa.list_(pa.float32(), list_size=self.dim)),
+                pa.field("created_at", pa.int64()),
+            ])
+            tbl = self.db.create_table(self.table_name, schema=schema)
+            return tbl
+
+    def insert(self, chunks: list, dedup: bool = True):
+        """插入 chunks 到向量库。dedup=True 时先删除同 doc_id 的旧数据。"""
+        if not chunks:
             return
-        schema = self.client.create_schema(auto_id=False, enable_dynamic_field=True)
-        schema.add_field("id", DataType.VARCHAR, max_length=64, is_primary=True)
-        schema.add_field("doc_id", DataType.VARCHAR, max_length=32)
-        schema.add_field("content", DataType.VARCHAR, max_length=65535)
-        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=512)
-        schema.add_field("created_at", DataType.INT64)
-        index_params = self.client.prepare_index_params()
-        index_params.add_index(field_name="embedding", index_type="IVF_FLAT",
-                               metric_type="COSINE", params={"nlist": 128})
-        self.client.create_collection(collection_name=self.collection_name,
-                                      schema=schema, index_params=index_params)
-        self.client.load_collection(self.collection_name)
+        if dedup:
+            doc_ids = {c.doc_id for c in chunks}
+            for doc_id in doc_ids:
+                self.delete_by_doc_id(doc_id)
 
-    def insert(self, chunks: list):
-        data = [{"id": c.chunk_id, "doc_id": c.doc_id, "content": c.content[:65535],
-                 "embedding": c.embedding, "created_at": int(time.time())} for c in chunks]
-        self.client.insert(self.collection_name, data)
-        self.client.load_collection(self.collection_name)
+        rows = [{
+            "id": c.chunk_id,
+            "doc_id": c.doc_id,
+            "content": c.content[:65535],
+            "embedding": [float(x) for x in c.embedding],
+            "created_at": int(time.time()),
+        } for c in chunks]
+        self.table.add(rows)
 
     def search(self, query_embedding: List[float], top_k: int = 20,
-               filter_expr: str = None) -> List[dict]:
+               filter_expr: Optional[str] = None) -> List[dict]:
         try:
-            results = self.client.search(collection_name=self.collection_name,
-                                         data=[query_embedding], limit=top_k,
-                                         filter=filter_expr,
-                                         output_fields=["doc_id", "content"])
-            if not results or not results[0]:
-                return []
-            # MilvusClient.search returns [[SearchResult, ...]]
+            q = self.table.search([float(x) for x in query_embedding]) \
+                .metric("cosine") \
+                .limit(top_k)
+            if filter_expr:
+                q = q.where(filter_expr)
+            results = q.to_list()
+
             docs = []
-            for r in results[0]:
-                if hasattr(r, 'entity'):
-                    docs.append({
-                        "id": r.get("id", ""),
-                        "chunk_id": r.get("id", ""),
-                        "doc_id": r.entity.get("doc_id", ""),
-                        "content": r.entity.get("content", ""),
-                        "score": float(getattr(r, 'distance', 0)),
-                    })
-                else:
-                    docs.append({
-                        "id": r.get("id", r.get("chunk_id", "")),
-                        "chunk_id": r.get("id", r.get("chunk_id", "")),
-                        "doc_id": r.get("doc_id", ""),
-                        "content": r.get("content", ""),
-                        "score": float(r.get("distance", r.get("score", 0))),
-                    })
+            for r in results:
+                docs.append({
+                    "id": r.get("id", ""),
+                    "chunk_id": r.get("id", ""),
+                    "doc_id": r.get("doc_id", ""),
+                    "content": r.get("content", ""),
+                    "score": round(1.0 - float(r.get("_distance", 0)), 4),
+                })
             return docs
         except Exception as e:
-            print(f"Search error: {e}")
+            logger.error("向量检索失败: %s", str(e)[:200])
             return []
+
+    def delete_by_doc_id(self, doc_id: str) -> None:
+        """按文档 ID 删除向量"""
+        try:
+            self.table.delete(f'doc_id = "{doc_id}"')
+            logger.info("已删除文档 %s 的向量", doc_id)
+        except Exception as e:
+            logger.error("删除文档 %s 向量失败: %s", doc_id, str(e)[:200])
+            raise

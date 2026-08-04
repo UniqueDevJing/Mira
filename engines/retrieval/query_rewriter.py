@@ -1,5 +1,8 @@
 """查询改写器"""
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 class QueryRewriter:
@@ -26,9 +29,16 @@ class QueryRewriter:
 原始查询: {original_query}
 失败原因: {eval_result.reason}
 请生成 {max_rewrites} 个改写后的查询，每行一个。"""
-            response = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.7)
-            lines = response.strip().split("\n")
-            return [l.strip().lstrip("0123456789. -") for l in lines if l.strip()][:max_rewrites]
+            try:
+                response = self.llm.chat(
+                    [{"role": "user", "content": prompt}], temperature=0.7
+                )
+                # SyncLLMClient.chat 返回 LLMResponse 对象
+                content = response.content if hasattr(response, 'content') else str(response)
+                lines = content.strip().split("\n")
+                return [l.strip().lstrip("0123456789. -") for l in lines if l.strip()][:max_rewrites]
+            except Exception as e:
+                logger.warning("LLM 查询改写失败，降级到模板改写: %s", str(e)[:200])
 
         # 无 LLM 时的简单改写
         return [

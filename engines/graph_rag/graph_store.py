@@ -1,9 +1,11 @@
 """知识图谱存储 — 内存版（Phase 2 开发用，生产切 Neo4j）"""
-from typing import List, Dict
+from typing import List, Dict, Optional
 from collections import defaultdict
 
+from engines.interfaces import GraphStoreInterface
 
-class GraphStore:
+
+class GraphStore(GraphStoreInterface):
     def __init__(self):
         self.nodes: Dict[str, dict] = {}       # {name: {type, aliases, chunks, properties}}
         self.edges: List[dict] = []             # [{subject, predicate, object, chunk_id}]
@@ -13,13 +15,14 @@ class GraphStore:
     def upsert_entity(self, name: str, etype: str, chunk_id: str = "",
                        aliases: List[str] = None):
         if name in self.nodes:
-            self.nodes[name]["chunks"].add(chunk_id)
+            if chunk_id and chunk_id not in self.nodes[name]["chunks"]:
+                self.nodes[name]["chunks"].append(chunk_id)
             if aliases:
                 self.nodes[name]["aliases"].extend(aliases)
         else:
             self.nodes[name] = {
                 "type": etype, "aliases": aliases or [],
-                "chunks": {chunk_id}, "properties": {}
+                "chunks": [chunk_id] if chunk_id else [], "properties": {}
             }
 
     def add_relation(self, subject: str, predicate: str, object: str,
@@ -44,16 +47,22 @@ class GraphStore:
         return results
 
     def multi_hop(self, start: str, relations: List[str], max_depth: int = 3) -> List[dict]:
-        """多跳遍历：从 start 出发，沿 relations 路径遍历"""
+        """多跳遍历：从 start 出发，沿指定关系类型遍历 max_depth 跳。
+
+        每一跳遍历所有指定的 relations 类型，而非只检查前 N 个。
+        """
         results = []
+        visited = {start}
         current = [start]
-        for rel in relations[:max_depth]:
+
+        for depth in range(max_depth):
             next_nodes = []
             for node in current:
                 for obj, pred in self.adj_out.get(node, []):
-                    if pred == rel:
-                        results.append({"from": node, "relation": rel, "to": obj})
+                    if pred in relations and obj not in visited:
+                        results.append({"from": node, "relation": pred, "to": obj})
                         next_nodes.append(obj)
+                        visited.add(obj)
             current = next_nodes
             if not current:
                 break

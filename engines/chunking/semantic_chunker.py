@@ -3,32 +3,22 @@ from typing import List
 from dataclasses import dataclass
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-
-@dataclass
-class Chunk:
-    chunk_id: str
-    doc_id: str
-    content: str
-    context: dict
-    metadata: dict
-    embedding: List[float] = None
+from engines.interfaces import Chunk
 
 
 class SemanticChunker:
     def __init__(self, min_tokens: int = 100, max_tokens: int = 800):
         self.min_tokens = min_tokens
         self.max_tokens = max_tokens
-        self._model = None
         self.similarity_threshold = 0.65
 
     @property
     def model(self):
-        if self._model is None:
-            self._model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
-        return self._model
+        """复用 EmbeddingService 的全局单例模型，避免重复加载"""
+        from engines.embedding.embedder import _get_model
+        return _get_model()
 
     def chunk(self, uir_doc) -> List[Chunk]:
         tree = self._build_title_tree(uir_doc)
@@ -124,4 +114,20 @@ class SemanticChunker:
         return chunks
 
     def _find_title_chain(self, paragraph: dict, tree: dict) -> List[str]:
-        return []
+        """根据段落位置和标题树，找到最近的标题层级链。
+
+        从标题树中找到该段落之前最近的标题，返回其 path（层级链）。
+        """
+        if not tree:
+            return []
+
+        # 按出现顺序收集所有标题
+        titles_in_order = list(tree.keys())
+        if not titles_in_order:
+            return []
+
+        # 找到段落之前的最近标题（简单策略：最后一个标题）
+        # 更精确的实现需要记录标题在文档中的位置
+        last_title = titles_in_order[-1]
+        node = tree.get(last_title, {})
+        return node.get("path", [last_title])

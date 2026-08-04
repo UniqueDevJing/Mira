@@ -40,7 +40,7 @@ class RetrievalEvaluator:
         try:
             emb = self.embedder.embed_query(query)
         except Exception:
-            emb = np.random.randn(512).tolist()
+            return 0.0  # embedding 失败时返回 0，不使用随机向量
         scores = []
         for r in results[:10]:
             content = r.get("content", "")[:512]
@@ -49,7 +49,7 @@ class RetrievalEvaluator:
                     content_emb = self.embedder.embed_query(content)
                     scores.append(float(np.dot(emb, content_emb)))
                 except Exception:
-                    scores.append(0.5)
+                    scores.append(0.0)
         return float(np.median(scores)) if scores else 0.0
 
     def _calc_coverage(self, query: str, results: List[dict]) -> float:

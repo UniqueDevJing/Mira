@@ -49,6 +49,7 @@ class PDFParser:
 
         mupdf_doc = fitz.open(file_path)
         for page_num, page in enumerate(mupdf_doc, 1):
+            page_height = page.rect.height  # 实际页面高度
             blocks = []
             for block in page.get_text("dict")["blocks"]:
                 if block["type"] == 0:
@@ -56,7 +57,7 @@ class PDFParser:
                         text = "".join([span["text"] for span in line["spans"]])
                         if text.strip():
                             blocks.append({
-                                "type": self._classify_block(block),
+                                "type": self._classify_block(block, page_height),
                                 "bbox": list(block["bbox"]),
                                 "content": text.strip(),
                                 "page_num": page_num,
@@ -85,9 +86,12 @@ class PDFParser:
         from engines.parsing.ocr import OCRProcessor
         return OCRProcessor().process(file_path)
 
-    def _classify_block(self, block: dict) -> str:
+    def _classify_block(self, block: dict, page_height: float = 842) -> str:
+        """根据位置和字体大小分类文本块。
+
+        page_height 默认 A4 (842pt)，由调用方传入实际页面高度。
+        """
         bbox = block["bbox"]
-        page_height = 842
         if bbox[1] < 50:
             return "header"
         elif bbox[1] > page_height - 50:
