@@ -1,5 +1,4 @@
 """StructureChunker: 标题边界 + 递归字符回退"""
-import pytest
 
 from engines.chunking.structure_chunker import StructureChunker
 

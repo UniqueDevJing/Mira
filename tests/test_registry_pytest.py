@@ -1,6 +1,8 @@
 """Parser 注册表: 扩展名路由 + 大小写归一 + MIME 表"""
 from engines.parsing.registry import (
-    SUPPORTED_EXTENSIONS, SUPPORTED_MIME, get_parser,
+    SUPPORTED_EXTENSIONS,
+    SUPPORTED_MIME,
+    get_parser,
 )
 
 

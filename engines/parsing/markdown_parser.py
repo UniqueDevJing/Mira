@@ -9,7 +9,7 @@ _TITLE_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
 class MarkdownParser:
-    supported_types = [".md", ".markdown"]
+    supported_types = (".md", ".markdown")
 
     def parse(self, file_path: str) -> UIRDocument:
         text = Path(file_path).read_text(encoding="utf-8", errors="replace")

@@ -17,7 +17,7 @@ def test_upload_rejects_unknown_extension():
 @pytest.mark.slow
 def test_upload_accepts_markdown():
     r = client.post("/api/v1/documents/upload",
-                    files={"file": ("a.md", "# 标题\n\n正文".encode("utf-8"), "text/markdown")})
+                    files={"file": ("a.md", "# 标题\n\n正文".encode(), "text/markdown")})
     assert r.status_code == 200
     assert r.json()["status"] == "processing"
 

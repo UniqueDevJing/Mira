@@ -1,8 +1,8 @@
 """解析器注册表 — 扩展名 → parser; 扩展名大小写归一后作权威路由"""
-from engines.parsing.pdf_parser import PDFParser
-from engines.parsing.markdown_parser import MarkdownParser
-from engines.parsing.txt_parser import TxtParser
 from engines.parsing.docx_parser import DocxParser
+from engines.parsing.markdown_parser import MarkdownParser
+from engines.parsing.pdf_parser import PDFParser
+from engines.parsing.txt_parser import TxtParser
 
 _PARSERS = (PDFParser, MarkdownParser, TxtParser, DocxParser)
 

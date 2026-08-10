@@ -1,8 +1,10 @@
 """向量存储测试 — 插入 / 检索 / 删除"""
-import pytest
 import tempfile
-from engines.retrieval.vector_store import VectorStore
+
+import pytest
+
 from engines.chunking.structure_chunker import Chunk
+from engines.retrieval.vector_store import VectorStore
 
 
 @pytest.fixture

@@ -1,7 +1,6 @@
 """基于文档结构的统一分块: 标题边界 + 递归字符回退"""
 import logging
 import re
-from typing import List, Tuple
 
 from engines.interfaces import Chunk
 
@@ -22,11 +21,11 @@ class RecursiveTextSplitter:
         self.chunk_overlap = chunk_overlap
         self.separators = separators or _CHINESE_SEPARATORS
 
-    def split_text(self, text: str) -> List[str]:
+    def split_text(self, text: str) -> list[str]:
         # overlap 只在此处应用一次, 避免递归层内复合
         return self._apply_overlap(self._split(text, self.separators))
 
-    def _split(self, text: str, seps: List[str]) -> List[str]:
+    def _split(self, text: str, seps: list[str]) -> list[str]:
         if not text:
             return []
         if len(text) <= self.chunk_size:
@@ -64,7 +63,7 @@ class RecursiveTextSplitter:
         return chunks
 
     @staticmethod
-    def _split_keepends(text: str, sep: str) -> List[str]:
+    def _split_keepends(text: str, sep: str) -> list[str]:
         parts = re.split(f"({re.escape(sep)})", text)
         pieces = []
         for i in range(0, len(parts) - 1, 2):
@@ -73,12 +72,12 @@ class RecursiveTextSplitter:
             pieces.append(parts[-1])
         return [p for p in pieces if p]
 
-    def _hard_split(self, text: str) -> List[str]:
+    def _hard_split(self, text: str) -> list[str]:
         """无分隔符可用: 按 chunk_size 硬切, 不含 overlap — 由顶层 _apply_overlap 统一加一次"""
         step = max(self.chunk_size, 1)
         return [text[i:i + self.chunk_size] for i in range(0, len(text), step)]
 
-    def _apply_overlap(self, chunks: List[str]) -> List[str]:
+    def _apply_overlap(self, chunks: list[str]) -> list[str]:
         if self.chunk_overlap <= 0 or len(chunks) <= 1:
             return chunks
         out = [chunks[0]]
@@ -95,7 +94,7 @@ class StructureChunker:
             chunk_size=max_chars, chunk_overlap=overlap, separators=_CHINESE_SEPARATORS
         )
 
-    def chunk(self, uir_doc) -> List[Chunk]:
+    def chunk(self, uir_doc) -> list[Chunk]:
         blocks = self._flatten_blocks(uir_doc)
         if not blocks:
             return []
@@ -113,7 +112,7 @@ class StructureChunker:
         return chunks
 
     @staticmethod
-    def _flatten_blocks(uir_doc) -> List[dict]:
+    def _flatten_blocks(uir_doc) -> list[dict]:
         blocks = []
         for page in uir_doc.pages:
             for block in page["blocks"]:
@@ -122,7 +121,7 @@ class StructureChunker:
         return blocks
 
     @staticmethod
-    def _heading_chains(blocks: List[dict]) -> List[List[str]]:
+    def _heading_chains(blocks: list[dict]) -> list[list[str]]:
         stack = []  # [(level, text)]
         chains = []
         for block in blocks:
@@ -137,7 +136,7 @@ class StructureChunker:
         return chains
 
     @staticmethod
-    def _split_segments(blocks: List[dict]) -> List[Tuple[int, List[dict]]]:
+    def _split_segments(blocks: list[dict]) -> list[tuple[int, list[dict]]]:
         segments = []
         start = 0
         for i, block in enumerate(blocks):
@@ -163,8 +162,8 @@ class StructureChunker:
         return 4
 
     @staticmethod
-    def _make_chunk(doc_id: str, content: str, segment: List[dict],
-                    title_chain: List[str], index: int) -> Chunk:
+    def _make_chunk(doc_id: str, content: str, segment: list[dict],
+                    title_chain: list[str], index: int) -> Chunk:
         first, last = segment[0], segment[-1]
         return Chunk(
             chunk_id=f"{doc_id}_chunk_{index:04d}",

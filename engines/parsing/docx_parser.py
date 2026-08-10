@@ -9,7 +9,7 @@ from engines.parsing.models import UIRDocument
 
 
 class DocxParser:
-    supported_types = [".docx"]
+    supported_types = (".docx",)
 
     def parse(self, file_path: str) -> UIRDocument:
         doc = DocxDocument(file_path)
@@ -19,7 +19,7 @@ class DocxParser:
             if not text:
                 continue
             style = p.style.name if p.style else ""
-            if style.startswith("Heading") or style.startswith("标题"):
+            if style.startswith(("Heading", "标题")):
                 blocks.append({
                     "type": "title", "bbox": [], "content": text, "page_num": 1,
                     "metadata": {"heading_level": self._heading_level(style)},

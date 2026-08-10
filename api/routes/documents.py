@@ -1,16 +1,19 @@
 """文档管理 API"""
-import uuid
 import asyncio
 import logging
 import os
-from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException
+import uuid
 
-from api.schemas.documents import (
-    DocumentUploadResponse, DocumentStatusResponse,
-    DocumentListItem, DocumentListResponse,
-)
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+
 from api.core.document_store import get_document_store
-from engines.parsing.registry import get_parser, SUPPORTED_MIME
+from api.schemas.documents import (
+    DocumentListItem,
+    DocumentListResponse,
+    DocumentStatusResponse,
+    DocumentUploadResponse,
+)
+from engines.parsing.registry import SUPPORTED_MIME, get_parser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -92,11 +95,13 @@ async def list_documents(page: int = 1, size: int = 20):
 
 def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
     """文档处理流水线（在后台线程中运行）"""
-    import tempfile, os
-    from engines.parsing.registry import get_parser
+    import os
+    import tempfile
+
+    from api.config import settings
     from engines.chunking.structure_chunker import StructureChunker
     from engines.embedding.embedder import EmbeddingService
-    from api.config import settings
+    from engines.parsing.registry import get_parser
 
     tmp_path = None
     ext = os.path.splitext(filename)[1].lower()
