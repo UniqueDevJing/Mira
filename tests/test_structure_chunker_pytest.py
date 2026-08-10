@@ -56,3 +56,11 @@ def test_chinese_separator_break_no_mid_sentence():
     # 递归切在中文标点断句, 不在字符中间腰斩
     assert len(chunks) >= 2
     assert all(c.content.endswith("。") for c in chunks)
+
+
+def test_hard_split_no_double_overlap():
+    # 无任何分隔符长串 (URL/长无标点): 硬切路径, overlap 只加一次, 内容不重复
+    long = _para("A" * 250)
+    chunks = StructureChunker(max_chars=100, overlap=20).chunk(_doc([long]))
+    assert len(chunks) >= 2
+    assert all(len(c.content) <= 100 + 20 for c in chunks)

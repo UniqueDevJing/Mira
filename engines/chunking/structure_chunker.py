@@ -74,8 +74,8 @@ class RecursiveTextSplitter:
         return [p for p in pieces if p]
 
     def _hard_split(self, text: str) -> List[str]:
-        """无分隔符可用: 按 chunk_size 硬切，overlap 重叠"""
-        step = max(self.chunk_size - self.chunk_overlap, 1)
+        """无分隔符可用: 按 chunk_size 硬切, 不含 overlap — 由顶层 _apply_overlap 统一加一次"""
+        step = max(self.chunk_size, 1)
         return [text[i:i + self.chunk_size] for i in range(0, len(text), step)]
 
     def _apply_overlap(self, chunks: List[str]) -> List[str]:
