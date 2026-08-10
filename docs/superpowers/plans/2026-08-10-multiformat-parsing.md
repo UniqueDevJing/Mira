@@ -152,6 +152,16 @@ def test_no_title_single_segment_split():
     assert len(chunks) >= 2
 
 
+def test_hard_split_no_double_overlap():
+    # 无任何分隔符长串 (URL/长无标点): 硬切路径, overlap 只加一次, 内容不重复
+    long = _para("A" * 250)
+    chunks = StructureChunker(max_chars=100, overlap=20).chunk(_doc([long]))
+    assert len(chunks) >= 2
+    assert all(len(c.content) <= 100 + 20 for c in chunks)
+    # 总字符数 = 原文 + 每次重叠前缀 = 250 + 2*20 = 290; 旧 bug (_hard_split 自算 overlap) 会到 330
+    assert sum(len(c.content) for c in chunks) == 250 + 2 * 20
+
+
 def test_chinese_separator_break_no_mid_sentence():
     text = "第一句。" * 4 + "第二句。" * 4 + "第三句。" * 4  # 48 字符, 超过 max_chars=12
     chunks = StructureChunker(max_chars=12, overlap=0).chunk(_doc([_para(text)]))
@@ -244,8 +254,8 @@ class RecursiveTextSplitter:
         return [p for p in pieces if p]
 
     def _hard_split(self, text: str) -> List[str]:
-        """无分隔符可用: 按 chunk_size 硬切，overlap 重叠"""
-        step = max(self.chunk_size - self.chunk_overlap, 1)
+        """无分隔符可用: 按 chunk_size 硬切, 不含 overlap — 由顶层 _apply_overlap 统一加一次"""
+        step = max(self.chunk_size, 1)
         return [text[i:i + self.chunk_size] for i in range(0, len(text), step)]
 
     def _apply_overlap(self, chunks: List[str]) -> List[str]:
