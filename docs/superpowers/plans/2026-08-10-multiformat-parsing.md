@@ -20,7 +20,7 @@
 - 本任务在 git worktree 执行，worktree 无 venv；所有测试命令用主仓库 venv: `$HOME/Desktop/rag-2.0/venv/Scripts/python -m pytest`
 - 测试文件命名 `test_*_pytest.py`（pytest 只收集此模式）；旧脚本 `test_*.py` 不被收集
 - 提交用中文 message，附 `Co-Authored-By: Claude <noreply@anthropic.com>`
-- 完成标准: 全 pytest 绿 (not slow/not integration) + feature 相关文件 ruff 0 错误 (全项目 ruff 289 个既有遗留错误另记, 不属本分支)
+- 完成标准: 全 pytest 绿 (not slow/not integration) + feature 相关文件 ruff 0 错误 (全项目 ruff 249 个既有遗留错误另记, 不属本分支)
 - 状态枚举（与现网一致）: `processing` / `ready` / `empty` / `failed` / `not_found`
 
 ---
