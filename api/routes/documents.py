@@ -80,7 +80,7 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
     """文档处理流水线（在后台线程中运行）"""
     import tempfile, os
     from engines.parsing.pdf_parser import PDFParser
-    from engines.chunking.semantic_chunker import SemanticChunker
+    from engines.chunking.structure_chunker import StructureChunker
     from engines.embedding.embedder import EmbeddingService
 
     tmp_path = None
@@ -94,7 +94,7 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
         uir = parser.parse(tmp_path)
         logger.info("[%s] 解析完成: %d 页", doc_id, len(uir.pages))
 
-        chunker = SemanticChunker()
+        chunker = StructureChunker()
         chunks = chunker.chunk(uir)
         logger.info("[%s] 分块完成: %d chunks", doc_id, len(chunks))
 

@@ -53,7 +53,7 @@ def mock_llm_response():
 @pytest.fixture
 def sample_chunks():
     """示例文档块"""
-    from engines.chunking.semantic_chunker import Chunk
+    from engines.chunking.structure_chunker import Chunk
     return [
         Chunk(
             chunk_id="test_chunk_0001",

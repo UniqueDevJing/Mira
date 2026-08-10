@@ -2,7 +2,7 @@
 import pytest
 import tempfile
 from engines.retrieval.vector_store import VectorStore
-from engines.chunking.semantic_chunker import Chunk
+from engines.chunking.structure_chunker import Chunk
 
 
 @pytest.fixture

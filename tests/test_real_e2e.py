@@ -30,12 +30,12 @@ print("Phase 1: 文档处理流水线 (解析-分块-嵌入-存储)")
 print("-" * 70)
 
 from engines.parsing.pdf_parser import PDFParser
-from engines.chunking.semantic_chunker import SemanticChunker
+from engines.chunking.structure_chunker import StructureChunker
 from engines.embedding.embedder import EmbeddingService
 from engines.retrieval.vector_store import VectorStore
 
 parser = PDFParser()
-chunker = SemanticChunker()
+chunker = StructureChunker()
 embedder = EmbeddingService()
 
 store = VectorStore()

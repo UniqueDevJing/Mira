@@ -16,8 +16,8 @@ async def test():
     print(f'   pages={len(uir.pages)}')
 
     print('3. Chunking...')
-    from engines.chunking.semantic_chunker import SemanticChunker
-    chunks = SemanticChunker().chunk(uir)
+    from engines.chunking.structure_chunker import StructureChunker
+    chunks = StructureChunker().chunk(uir)
     print(f'   chunks={len(chunks)}')
 
     print('DONE')

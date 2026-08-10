@@ -20,8 +20,8 @@ print(f'    {len(uir.pages)} 页')
 
 # 2. 语义分块
 print('\n[2] 语义分块...')
-from engines.chunking.semantic_chunker import SemanticChunker
-chunks = SemanticChunker().chunk(uir)
+from engines.chunking.structure_chunker import StructureChunker
+chunks = StructureChunker().chunk(uir)
 print(f'    {len(chunks)} chunks')
 
 # 3. 实体抽取 + 图谱构建

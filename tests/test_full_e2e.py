@@ -11,7 +11,7 @@ print('='*60)
 from engines.embedding.embedder import EmbeddingService
 from engines.retrieval.vector_store import VectorStore
 from engines.parsing.pdf_parser import PDFParser
-from engines.chunking.semantic_chunker import SemanticChunker
+from engines.chunking.structure_chunker import StructureChunker
 from engines.retrieval.hybrid_retriever import HybridRetriever
 
 # 1. 解析
@@ -21,7 +21,7 @@ print(f'  pages={len(uir.pages)}')
 
 # 2. 分块
 print('\n[2/5] 语义分块...')
-chunks = SemanticChunker().chunk(uir)
+chunks = StructureChunker().chunk(uir)
 print(f'  chunks={len(chunks)}')
 
 # 3. 嵌入 + 存储

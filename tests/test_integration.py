@@ -6,7 +6,7 @@ os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from engines.embedding.embedder import EmbeddingService
 from engines.retrieval.vector_store import VectorStore
 from engines.parsing.pdf_parser import PDFParser
-from engines.chunking.semantic_chunker import SemanticChunker
+from engines.chunking.structure_chunker import StructureChunker
 from engines.retrieval.hybrid_retriever import HybridRetriever
 
 
@@ -18,7 +18,7 @@ async def test():
     uir = PDFParser().parse('tests/fixtures/sample.pdf')
     print(f'2. PDF: {len(uir.pages)} pages')
 
-    chunks = SemanticChunker().chunk(uir)
+    chunks = StructureChunker().chunk(uir)
     print(f'3. Chunks: {len(chunks)}')
 
     embs = svc.embed_batch([c.content for c in chunks])

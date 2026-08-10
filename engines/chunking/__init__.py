@@ -1,1 +1,1 @@
-from engines.chunking.semantic_chunker import SemanticChunker, Chunk
+from engines.chunking.structure_chunker import StructureChunker, Chunk
