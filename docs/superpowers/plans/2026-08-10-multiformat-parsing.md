@@ -16,6 +16,8 @@
 - 所有配置走 `api/config.py` Pydantic Settings，`RAG_` 前缀 env 覆盖；分块参数 `chunk_max_chars=800`、`chunk_overlap=128`
 - 依赖装国内镜像: `pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`
 - 中文分隔符: `["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]`
+- 递归字符切分器**自写**（`RecursiveTextSplitter`），不用 langchain — venv 未装 langchain，且项目 design-decisions 拒绝 LangChain 抽象层；Py3.14 下 langchain-core 有兼容风险（用户已确认）
+- 本任务在 git worktree 执行，worktree 无 venv；所有测试命令用主仓库 venv: `$HOME/Desktop/rag-2.0/venv/Scripts/python -m pytest`
 - 测试文件命名 `test_*_pytest.py`（pytest 只收集此模式）；旧脚本 `test_*.py` 不被收集
 - 提交用中文 message，附 `Co-Authored-By: Claude <noreply@anthropic.com>`
 - 完成标准: 全 pytest 绿 + `ruff check` 0 错误
@@ -151,9 +153,10 @@ def test_no_title_single_segment_split():
 
 
 def test_chinese_separator_break_no_mid_sentence():
-    text = "第一句。" + "第二句。" + "第三句。"
+    text = "第一句。" * 4 + "第二句。" * 4 + "第三句。" * 4  # 48 字符, 超过 max_chars=12
     chunks = StructureChunker(max_chars=12, overlap=0).chunk(_doc([_para(text)]))
     # 递归切在中文标点断句, 不在字符中间腰斩
+    assert len(chunks) >= 2
     assert all(c.content.endswith("。") for c in chunks)
 ```
 
@@ -170,8 +173,6 @@ import logging
 import re
 from typing import List, Tuple
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from engines.interfaces import Chunk
 
 logger = logging.getLogger(__name__)
@@ -179,11 +180,74 @@ logger = logging.getLogger(__name__)
 _CHINESE_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
 
 
+class RecursiveTextSplitter:
+    """递归字符切分: 按分隔符优先级逐级切，块超长则用下一级分隔符递归。
+
+    自写而非 langchain — 项目 design-decisions 拒绝 LangChain 抽象层，且无此依赖。
+    """
+
+    def __init__(self, chunk_size: int = 800, chunk_overlap: int = 128,
+                 separators=None):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.separators = separators or _CHINESE_SEPARATORS
+
+    def split_text(self, text: str) -> List[str]:
+        return self._split(text, self.separators)
+
+    def _split(self, text: str, seps: List[str]) -> List[str]:
+        if not text:
+            return []
+        if len(text) <= self.chunk_size:
+            return [text]
+        if not seps or seps[0] == "":
+            return self._hard_split(text)
+        sep = seps[0]
+        chunks = []
+        current = ""
+        for piece in text.split(sep):
+            if current and len(current) + len(sep) + len(piece) <= self.chunk_size:
+                current = current + sep + piece
+            elif not current:
+                current = piece
+            elif len(piece) > self.chunk_size:
+                if current:
+                    chunks.append(current)
+                    current = ""
+                for sub in self._split(piece, seps[1:]):
+                    if current and len(current) + len(sep) + len(sub) <= self.chunk_size:
+                        current = current + sep + sub
+                    else:
+                        if current:
+                            chunks.append(current)
+                        current = sub
+            else:
+                if current:
+                    chunks.append(current)
+                current = piece
+        if current:
+            chunks.append(current)
+        return self._apply_overlap(chunks)
+
+    def _hard_split(self, text: str) -> List[str]:
+        """无分隔符可用: 按 chunk_size 硬切，overlap 重叠"""
+        step = max(self.chunk_size - self.chunk_overlap, 1)
+        return [text[i:i + self.chunk_size] for i in range(0, len(text), step)]
+
+    def _apply_overlap(self, chunks: List[str]) -> List[str]:
+        if self.chunk_overlap <= 0 or len(chunks) <= 1:
+            return chunks
+        out = [chunks[0]]
+        for c in chunks[1:]:
+            out.append(out[-1][-self.chunk_overlap:] + c)
+        return out
+
+
 class StructureChunker:
     def __init__(self, max_chars: int = 800, overlap: int = 128):
         self.max_chars = max_chars
         self.overlap = overlap
-        self._splitter = RecursiveCharacterTextSplitter(
+        self._splitter = RecursiveTextSplitter(
             chunk_size=max_chars, chunk_overlap=overlap, separators=_CHINESE_SEPARATORS
         )
 
@@ -270,8 +334,6 @@ class StructureChunker:
             },
         )
 ```
-
-> 若 `from langchain_text_splitters import ...` 报 ImportError，改为 `from langchain.text_splitter import RecursiveCharacterTextSplitter`（langchain 0.3 兼容路径）。
 
 - [ ] **Step 5: 跑测试确认通过**
 
