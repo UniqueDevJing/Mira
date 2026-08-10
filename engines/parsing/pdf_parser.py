@@ -1,5 +1,6 @@
 """电子原生 PDF 解析，PyMuPDF + PDFPlumber 双引擎"""
 import hashlib
+import re
 from pathlib import Path
 
 import fitz
@@ -44,7 +45,8 @@ class PDFParser:
                                 "content": text.strip(),
                                 "page_num": page_num,
                                 "metadata": {
-                                    "font_size": line["spans"][0]["size"] if line["spans"] else 0
+                                    "font_size": line["spans"][0]["size"] if line["spans"] else 0,
+                                    "is_bold": bool(line["spans"][0]["flags"] & 16) if line["spans"] else False,
                                 }
                             })
             pages.append({"page_num": page_num, "blocks": blocks})
@@ -68,8 +70,10 @@ class PDFParser:
         from engines.parsing.ocr import OCRProcessor
         return OCRProcessor().process(file_path)
 
+    _NUMBERED_TITLE_RE = re.compile(r"^(第[一二三四五六七八九十百千]+[章节篇]|(\d+(\.\d+)*)[、\s.])")
+
     def _classify_block(self, block: dict, page_height: float = 842) -> str:
-        """根据位置和字体大小分类文本块。
+        """根据位置/字号/加粗/编号分类文本块。
 
         page_height 默认 A4 (842pt)，由调用方传入实际页面高度。
         """
@@ -78,6 +82,10 @@ class PDFParser:
             return "header"
         elif bbox[1] > page_height - 50:
             return "footer"
-        elif any(line["spans"][0].get("size", 0) > 16 for line in block.get("lines", [])):
+        spans = block["lines"][0]["spans"] if block.get("lines") else []
+        size = spans[0]["size"] if spans else 0
+        bold = bool(spans[0]["flags"] & 16) if spans else False
+        text = "".join(s["text"] for line in block.get("lines", []) for s in line["spans"])
+        if size > 16 or bold or self._NUMBERED_TITLE_RE.match(text):
             return "title"
         return "paragraph"
