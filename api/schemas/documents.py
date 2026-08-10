@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class DocumentStatus(str, Enum):
     processing = "processing"
     ready = "ready"
+    empty = "empty"
     failed = "failed"
     not_found = "not_found"
 

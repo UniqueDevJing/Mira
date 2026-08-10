@@ -2,13 +2,15 @@
 import uuid
 import asyncio
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks
+import os
+from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException
 
 from api.schemas.documents import (
     DocumentUploadResponse, DocumentStatusResponse,
     DocumentListItem, DocumentListResponse,
 )
 from api.core.document_store import get_document_store
+from engines.parsing.registry import get_parser, SUPPORTED_MIME
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -19,8 +21,9 @@ async def _process_document_background(doc_id: str, filename: str, content: byte
     doc_store = get_document_store()
     try:
         result = await asyncio.to_thread(_process_document_pipeline, doc_id, filename, content)
+        status = "empty" if result.get("chunks", 0) == 0 else "ready"
         doc_store.update_status(
-            doc_id, "ready",
+            doc_id, status,
             page_count=result.get("pages", 0),
             chunk_count=result.get("chunks", 0),
         )
@@ -39,6 +42,17 @@ async def upload_document(
 ):
     doc_id = str(uuid.uuid4())[:12]
     content = await file.read()
+
+    # 扩展名校验: 未知格式直接 400, 不落库
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if get_parser(ext) is None:
+        raise HTTPException(status_code=400, detail=f"不支持的格式: {ext or '未知'}")
+    # MIME 软校验: 与扩展名不符仅告警, 扩展名仍权威
+    if file.content_type:
+        expected = SUPPORTED_MIME.get(ext, set())
+        if expected and file.content_type.lower() not in expected:
+            logger.warning("[%s] MIME 与扩展名不符: filename=%s, content_type=%s",
+                           doc_id, file.filename, file.content_type)
 
     # 保存到 SQLite
     doc_store = get_document_store()
@@ -79,24 +93,32 @@ async def list_documents(page: int = 1, size: int = 20):
 def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
     """文档处理流水线（在后台线程中运行）"""
     import tempfile, os
-    from engines.parsing.pdf_parser import PDFParser
+    from engines.parsing.registry import get_parser
     from engines.chunking.structure_chunker import StructureChunker
     from engines.embedding.embedder import EmbeddingService
+    from api.config import settings
 
     tmp_path = None
+    ext = os.path.splitext(filename)[1].lower()
+    parser = get_parser(ext)
+    if parser is None:
+        raise ValueError(f"不支持的格式: {ext}")
     try:
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        # 用真实后缀写临时文件, 保证解析器能按文件类型识别
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         tmp_path = tmp.name
         tmp.write(content)
         tmp.close()
 
-        parser = PDFParser()
         uir = parser.parse(tmp_path)
         logger.info("[%s] 解析完成: %d 页", doc_id, len(uir.pages))
 
-        chunker = StructureChunker()
+        chunker = StructureChunker(max_chars=settings.chunk_max_chars, overlap=settings.chunk_overlap)
         chunks = chunker.chunk(uir)
         logger.info("[%s] 分块完成: %d chunks", doc_id, len(chunks))
+
+        if not chunks:
+            return {"pages": len(uir.pages), "chunks": 0}
 
         embedder = EmbeddingService()
         texts = [c.content for c in chunks]
