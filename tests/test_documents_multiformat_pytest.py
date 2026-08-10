@@ -37,3 +37,16 @@ def test_pipeline_empty_doc_returns_zero_chunks():
 def test_pipeline_unknown_ext_raises():
     with pytest.raises(ValueError):
         _process_document_pipeline("d1", "a.doc", b"x")
+
+
+def test_empty_doc_status_becomes_empty():
+    r = client.post("/api/v1/documents/upload",
+                    files={"file": ("empty.md", b"", "text/markdown")})
+    assert r.status_code == 200
+    doc_id = r.json()["doc_id"]
+    status = "processing"
+    for _ in range(10):
+        status = client.get(f"/api/v1/documents/{doc_id}/status").json()["status"]
+        if status != "processing":
+            break
+    assert status == "empty"

@@ -252,9 +252,9 @@ async function refreshDocList() {
     el.innerHTML = data.items.map(d => `
       <div class="p-4 flex items-center justify-between hover:bg-gray-50">
         <div class="flex items-center gap-3">
-          <i class="fa ${d.status==='ready'?'fa-check-circle text-green-500':'fa-spinner fa-spin text-yellow-500'}"></i>
+          <i class="fa ${d.status==='ready'?'fa-check-circle text-green-500':(d.status==='empty'?'fa-file-o text-gray-400':'fa-spinner fa-spin text-yellow-500')}"></i>
           <span class="font-medium">${d.filename}</span>
-          <span class="text-xs px-2 py-0.5 rounded ${d.status==='ready'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}">${d.status==='ready'?'就绪':d.status}</span>
+          <span class="text-xs px-2 py-0.5 rounded ${d.status==='ready'?'bg-green-100 text-green-700':(d.status==='empty'?'bg-gray-100 text-gray-600':'bg-yellow-100 text-yellow-700')}">${d.status==='ready'?'就绪':(d.status==='empty'?'空文档':d.status)}</span>
         </div>
         <span class="text-xs text-gray-400 font-mono">${d.doc_id}</span>
       </div>`).join('');

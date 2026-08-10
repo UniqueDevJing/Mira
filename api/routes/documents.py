@@ -116,7 +116,11 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes):
         tmp.close()
 
         uir = parser.parse(tmp_path)
+        uir.doc_id = doc_id  # 统一用上传 uuid, 避免内容哈希跨格式冲突
         logger.info("[%s] 解析完成: %d 页", doc_id, len(uir.pages))
+
+        if uir.tables:
+            logger.warning("[%s] 解析出 %d 个表格, 表格内容当前未入库 (仅段落文本入向量库)", doc_id, len(uir.tables))
 
         chunker = StructureChunker(max_chars=settings.chunk_max_chars, overlap=settings.chunk_overlap)
         chunks = chunker.chunk(uir)
