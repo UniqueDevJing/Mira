@@ -17,7 +17,7 @@ class OCRProcessor:
         logger.info("PaddleOCR 初始化: lang=%s, gpu=%s", lang, use_gpu)
 
     def process(self, file_path: str):
-        from engines.parsing.pdf_parser import UIRDocument
+        from engines.parsing.models import UIRDocument
 
         doc = fitz.open(file_path)
         pages = []

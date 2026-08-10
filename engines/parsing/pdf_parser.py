@@ -1,28 +1,11 @@
 """电子原生 PDF 解析，PyMuPDF + PDFPlumber 双引擎"""
 import hashlib
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import List
 
 import fitz
 import pdfplumber
 
-
-@dataclass
-class TextBlock:
-    type: str
-    bbox: List[float]
-    content: str
-    page_num: int
-    metadata: dict = field(default_factory=dict)
-
-
-@dataclass
-class UIRDocument:
-    doc_id: str
-    source: dict
-    pages: List[dict]
-    tables: List[dict]
+from engines.parsing.models import UIRDocument
 
 
 class PDFParser:
