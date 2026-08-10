@@ -836,9 +836,11 @@ git commit -m "feat: parser 注册表按扩展名路由"
 
 ```python
 """上传路由: 扩展名校验 + 空文档状态"""
+import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.routes.documents import _process_document_pipeline
 
 client = TestClient(app)
 
@@ -849,9 +851,10 @@ def test_upload_rejects_unknown_extension():
     assert r.status_code == 400
 
 
+@pytest.mark.slow
 def test_upload_accepts_markdown():
     r = client.post("/api/v1/documents/upload",
-                    files={"file": ("a.md", b"# 标题\n\n正文", "text/markdown")})
+                    files={"file": ("a.md", "# 标题\n\n正文".encode("utf-8"), "text/markdown")})
     assert r.status_code == 200
     assert r.json()["status"] == "processing"
 
@@ -860,6 +863,17 @@ def test_upload_rejects_uppercase_unknown():
     r = client.post("/api/v1/documents/upload",
                     files={"file": ("a.XLSX", b"x", "application/octet-stream")})
     assert r.status_code == 400
+
+
+def test_pipeline_empty_doc_returns_zero_chunks():
+    """直接测 pipeline: 空 md 早退返回 0 chunk, 不触发 embedding/模型"""
+    result = _process_document_pipeline("d1", "empty.md", b"")
+    assert result == {"pages": 1, "chunks": 0}
+
+
+def test_pipeline_unknown_ext_raises():
+    with pytest.raises(ValueError):
+        _process_document_pipeline("d1", "a.doc", b"x")
 ```
 
 > 注: 若 `api.main` 引入触发外部依赖（Redis/LLM 等），测试前确认 `conftest.py` 的环境变量已设置（当前已设置 HF/transformers 离线变量）。若 TestClient 启动失败，改为直接测 `_process_document_pipeline` 的扩展名分支（见 Step 5 fallback）。
