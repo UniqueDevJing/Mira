@@ -9,8 +9,7 @@ from engines.parsing.models import UIRDocument
 
 
 class PDFParser:
-    def __init__(self):
-        self.supported_types = [".pdf"]
+    supported_types = [".pdf"]
 
     def parse(self, file_path: str) -> UIRDocument:
         pdf_type = self._detect_type(file_path)
