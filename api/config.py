@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # OCR
     ocr_lang: str = "ch"
 
+    # 分块
+    chunk_max_chars: int = 800
+    chunk_overlap: int = 128
+
     # CORS — 开发环境默认 *，生产环境通过 RAG_CORS_ORIGINS 配置（逗号分隔）
     cors_origins: List[str] = ["*"]
 
