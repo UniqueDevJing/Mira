@@ -78,9 +78,9 @@ upload → 扩展名校验（400 拒绝）→ tmp 文件（真实后缀）
 - 不支持的扩展名 → 400，不碰解析
 - 扩展名归一: `ext.lower()` 大小写兼容
 - MIME 软校验: `UploadFile.content_type` 与预期不符 → warning 日志；扩展名仍权威（HTTP header 客户端可控，不作信任源）。不引入 python-magic
-- python-docx 解析损坏/加密 docx → 捕获 → 文档状态 `error`，不崩
-- 空文档（0 段落）→ 状态 `empty`，与 `error` 区分
-- 状态枚举: `processing` / `completed` / `error` / `empty`
+- python-docx 解析损坏/加密 docx → 捕获 → 文档状态 `failed`，不崩
+- 空文档（0 段落）→ 状态 `empty`，与 `failed` 区分
+- 状态枚举: `processing` / `ready` / `empty` / `failed` / `not_found`
 
 ## 测试 (`tests/test_multiformat_pytest.py`)
 
