@@ -64,3 +64,5 @@ def test_hard_split_no_double_overlap():
     chunks = StructureChunker(max_chars=100, overlap=20).chunk(_doc([long]))
     assert len(chunks) >= 2
     assert all(len(c.content) <= 100 + 20 for c in chunks)
+    # 总字符数 = 原文 + 每次重叠前缀 = 250 + 2*20 = 290; 旧 bug (_hard_split 自算 overlap) 会到 330
+    assert sum(len(c.content) for c in chunks) == 250 + 2 * 20
