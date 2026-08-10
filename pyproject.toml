@@ -47,6 +47,17 @@ dev = [
     "ruff>=0.8.0",
 ]
 
+[tool.pytest.ini_options]
+# 只收集 pytest 风格文件; 旧版手动脚本(test_st.py/test_phase2.py 等)在导入期执行
+# 顶层代码/依赖缺失(slowapi)会破坏收集, 单独用 `python test_xxx.py` 运行
+python_files = ["test_*_pytest.py"]
+# milvus.db/rag-project 是旧项目副本, 其 tests/conftest.py 会污染 sys.path 顶掉当前 engines
+norecursedirs = ["venv", "milvus.db", "lancedb_data", ".idea", "node_modules"]
+markers = [
+    "slow: 慢测试 (真实模型/网络), 默认跳过",
+    "integration: 集成测试, 需外部服务",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
