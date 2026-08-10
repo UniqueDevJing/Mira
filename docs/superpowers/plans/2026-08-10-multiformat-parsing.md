@@ -193,7 +193,8 @@ class RecursiveTextSplitter:
         self.separators = separators or _CHINESE_SEPARATORS
 
     def split_text(self, text: str) -> List[str]:
-        return self._split(text, self.separators)
+        # overlap 只在此处应用一次, 避免递归层内复合
+        return self._apply_overlap(self._split(text, self.separators))
 
     def _split(self, text: str, seps: List[str]) -> List[str]:
         if not text:
@@ -203,31 +204,44 @@ class RecursiveTextSplitter:
         if not seps or seps[0] == "":
             return self._hard_split(text)
         sep = seps[0]
+        # 保留分隔符切分: piece 自带尾部 sep, chunk 以标点结尾读起来自然
+        pieces = self._split_keepends(text, sep)
         chunks = []
         current = ""
-        for piece in text.split(sep):
-            if current and len(current) + len(sep) + len(piece) <= self.chunk_size:
-                current = current + sep + piece
-            elif not current:
-                current = piece
-            elif len(piece) > self.chunk_size:
+        for piece in pieces:
+            if current and len(current) + len(piece) <= self.chunk_size:
+                current = current + piece
+                continue
+            if len(piece) > self.chunk_size:
+                # 超长 piece: 先 flush 当前块, 再用下一级分隔符递归
                 if current:
                     chunks.append(current)
                     current = ""
                 for sub in self._split(piece, seps[1:]):
-                    if current and len(current) + len(sep) + len(sub) <= self.chunk_size:
-                        current = current + sep + sub
+                    if current and len(current) + len(sub) <= self.chunk_size:
+                        current = current + sub
                     else:
                         if current:
                             chunks.append(current)
                         current = sub
-            else:
-                if current:
-                    chunks.append(current)
-                current = piece
+                continue
+            # piece 放得下但当前块会超: flush 后新开
+            if current:
+                chunks.append(current)
+            current = piece
         if current:
             chunks.append(current)
-        return self._apply_overlap(chunks)
+        return chunks
+
+    @staticmethod
+    def _split_keepends(text: str, sep: str) -> List[str]:
+        parts = re.split(f"({re.escape(sep)})", text)
+        pieces = []
+        for i in range(0, len(parts) - 1, 2):
+            pieces.append(parts[i] + parts[i + 1])
+        if len(parts) % 2 == 1 and parts[-1]:
+            pieces.append(parts[-1])
+        return [p for p in pieces if p]
 
     def _hard_split(self, text: str) -> List[str]:
         """无分隔符可用: 按 chunk_size 硬切，overlap 重叠"""
