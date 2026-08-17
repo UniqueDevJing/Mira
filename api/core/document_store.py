@@ -3,6 +3,7 @@
 替代内存 dict，重启后文档状态不丢失。
 """
 
+import json
 import logging
 import sqlite3
 from contextlib import contextmanager
@@ -77,9 +78,14 @@ class DocumentStore:
                     degradation_level INTEGER DEFAULT 0,
                     latency_ms INTEGER,
                     tokens_total INTEGER,
+                    sources TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 幂等迁移: 旧库缺 sources 列时补加 (标注样本需检索上下文)
+            qa_cols = {row[1] for row in conn.execute("PRAGMA table_info(qa_logs)").fetchall()}
+            if "sources" not in qa_cols:
+                conn.execute("ALTER TABLE qa_logs ADD COLUMN sources TEXT")
             # 创建更新触发器
             conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS update_timestamp
@@ -127,15 +133,17 @@ class DocumentStore:
         degradation_level: int = 0,
         latency_ms: int = 0,
         tokens_total: int = 0,
+        sources: list | None = None,
     ):
-        """写入 QA 日志（异步调用，不阻塞响应）。"""
+        """写入 QA 日志（异步调用，不阻塞响应）。sources 为检索上下文, 供质量标注使用。"""
         try:
+            sources_json = json.dumps(sources or [], ensure_ascii=False)
             with self._get_conn() as conn:
                 conn.execute(
                     """INSERT INTO qa_logs
-                       (question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (question, answer[:500], skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total),
+                       (question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources_json),
                 )
         except sqlite3.Error as e:
             logger.warning("QA 日志写入失败: %s", str(e)[:120])

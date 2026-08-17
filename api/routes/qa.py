@@ -53,6 +53,7 @@ async def ask_question(req: QARequest):
         degradation_level=result.get("degradation_level", 0),
         latency_ms=latency_ms,
         tokens_total=token_usage.get("total_tokens", 0),
+        sources=result.get("sources", []),
     )
 
     return QAResponse(
@@ -111,7 +112,7 @@ async def ask_question_stream(req: QARequest):
     start = time.time()
 
     async def _event_stream():
-        meta, done = {}, {}
+        meta, done, sources = {}, {}, []
         try:
             async for ev in orchestrate_stream(
                 req.question,
@@ -124,6 +125,8 @@ async def ask_question_stream(req: QARequest):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":
                     meta = ev
+                elif ev.get("type") == "sources":
+                    sources = ev.get("sources", [])
                 elif ev.get("type") == "done":
                     done = ev
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
@@ -142,6 +145,7 @@ async def ask_question_stream(req: QARequest):
                 degradation_level=done.get("degradation_level", 0),
                 latency_ms=int((time.time() - start) * 1000),
                 tokens_total=usage.get("total_tokens", 0),
+                sources=sources,
             )
 
     return StreamingResponse(
@@ -155,12 +159,12 @@ async def ask_question_stream(req: QARequest):
 _bg_tasks: set[asyncio.Task] = set()
 
 
-def _log_qa_async(question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total):
+def _log_qa_async(question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources=None):
     """异步写 QA 日志（fire-and-forget，不阻塞响应）。"""
 
     def _write():
         get_document_store().log_qa(
-            question, answer, skill, kb_id, routing_source, degradation_level, int(latency_ms), tokens_total
+            question, answer, skill, kb_id, routing_source, degradation_level, int(latency_ms), tokens_total, sources
         )
 
     try:
