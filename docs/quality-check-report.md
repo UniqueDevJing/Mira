@@ -71,6 +71,7 @@
 - **F1 `scripts/calibrate_fidelity.py`**（新增）：纯函数 `sweep_fidelity(cases)` 遍历 `fidelity_threshold` 取 F1 最大点（无模型/LLM 依赖），CLI 读 `labeled.json` 打印推荐阈值；平局取"最小能达最大 F1 的 t"（拒绝式护栏最宽松安全边界）。
 - **F2 度量数学锁进单测**：`tests/test_eval_tools_pytest.py`（6 测）固化 `_f1`/`_cosine`/`_extract_ragas_json`/`sweep_fidelity`，防评估数字静默失真。
 - **F3 契约校验**：`evaluate.py` / `calibrate_threshold.py` 对当前代码契约（`_retrieve_context` 的 `top1_score`、`/ask` 响应 `answer`+`sources[].content`、`RoutingResult` 字段）全部成立，无"脚本已对不上代码"隐患。
+- **F4 `scripts/build_labeled_skeleton.py`**（新增）：消弭定标前置摩擦。`evaluate.py` 落盘 `answer`+`contexts` 后，本脚本把 `data/eval-summary.json` 转为 `labeled.json` 骨架（`score` 取 `ragas.faithfulness` 或兜底 `1-hallucination_rate`，`is_bad` 留 `null` 待人工标）+ 人类可读审核清单 `labeled_review.md`（问题/答案/上下文并排，勾 good/bad）。人工回填 `is_bad` 后跑 `calibrate_fidelity.py` 即出推荐阈值。单测 `test_build_labeled_skeleton_pytest.py`（6 测）固化 `score` 映射与结构。
 
 ### G. 可观测性闭环
 - **G1 质量指标上报**：`metrics.py` 新增 `rag_qa_faithfulness` / `rag_qa_top1_score` 两个 Histogram，运维可在 Grafana 画"回答质量劣化趋势"并设告警。

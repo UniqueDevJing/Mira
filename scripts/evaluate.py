@@ -149,6 +149,8 @@ async def _evaluate_one(client, url, key, item, embed, llm_key) -> dict:
     return {
         "question": item["question"],
         "kb": item.get("kb", ""),
+        "answer": answer,
+        "contexts": sources,
         "accuracy": round(acc, 4),
         "recall": round(recall, 4),
         "hallucination_rate": round(1.0 - faith, 4),

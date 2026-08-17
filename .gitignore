@@ -8,6 +8,9 @@ venv/
 milvus.db/
 lancedb_data/
 data/eval-summary.json
+# 评估标注产物 (可能含答案, 不入库)
+data/labeled.json
+data/labeled_review.md
 *.egg-info/
 dist/
 *.pdf
