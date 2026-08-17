@@ -31,6 +31,13 @@ class QARequest(BaseModel):
         default_factory=list,
         description="多轮对话历史(客户端维护, 服务端无状态透传), 用于上下文连贯。最多取最近 20 轮",
     )
+    session_id: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description="多轮会话 ID: 携带后服务端按 session 维护历史(刷新/换设备不丢), 覆盖 history 字段, TTL 30min",
+    )
 
     model_config = {
         "json_schema_extra": {

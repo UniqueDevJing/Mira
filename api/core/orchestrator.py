@@ -48,6 +48,8 @@ from api.core.metrics import (
 )
 from api.core.qa_cache import get_qa_cache
 from api.core.qa_metrics import _calc_qa_metrics, _faithfulness
+from api.core.session_store import load_session, save_session
+from api.schemas.qa import ChatTurn
 from api.state import get_bm25_index, get_embedder, get_reranker, get_vector_store
 from engines.embedding.embedder import EmbeddingService
 from engines.retrieval.evaluator import RetrievalEvaluator
@@ -184,14 +186,18 @@ async def ask(
     temperature: float = 0.1,
     mode: str = "hybrid",
     history=None,
+    session_id=None,
 ) -> dict:
     """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。"""
     start = time.time()
 
+    # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history, 刷新/换设备不丢)
+    effective_history = load_session(session_id) if session_id else history
+
     # QA 结果缓存: 相同输入指纹命中则跳过路由+检索+LLM, 直接返回缓存
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, history)
+        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history)
         if cache is not None
         else None
     )
@@ -203,6 +209,16 @@ async def ask(
             result = copy.deepcopy(hit)  # 深拷贝: 缓存条目含嵌套 dict, 浅拷贝修改会污染缓存
             result["cache_hit"] = True
             qa_requests_total.labels(mode=mode, status="cache_hit").inc()
+            # 会话持久化: 缓存命中也记录本轮(刷新/换设备不丢上下文); 否则重复问题会丢失多轮链路
+            if session_id:
+                save_session(
+                    session_id,
+                    list(effective_history)
+                    + [
+                        ChatTurn(role="user", content=question),
+                        ChatTurn(role="assistant", content=result.get("answer", "")),
+                    ],
+                )
             return result
         qa_cache_misses_total.inc()
 
@@ -210,10 +226,10 @@ async def ask(
     routing, router_ms = await _route(question, skill, llm, start)
 
     if routing.skill == "direct":
-        result = await _skill_direct(question, llm, routing, start, temperature, history)
+        result = await _skill_direct(question, llm, routing, start, temperature, effective_history)
     else:
         result = await _skill_rag(
-            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history
+            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, effective_history
         )
 
     # 先组装完整 result (router_ms/qa_metrics) 再写缓存 — 原 cache.set 在 qa_metrics 计算前执行,
@@ -234,6 +250,14 @@ async def ask(
         cached = copy.deepcopy(result)
         cached["cache_hit"] = False
         cache.set(cache_key, cached, settings.qa_cache_ttl_s)
+
+    # 会话持久化: 服务端按 session 维护多轮历史(覆盖 body.history)
+    if session_id:
+        save_session(
+            session_id,
+            list(effective_history)
+            + [ChatTurn(role="user", content=question), ChatTurn(role="assistant", content=result.get("answer", ""))],
+        )
 
     _record_qa_quality(result)
     _report_embed_cache()
@@ -665,6 +689,7 @@ async def ask_stream(
     temperature: float = 0.1,
     mode: str = "hybrid",
     history=None,
+    session_id=None,
 ):
     """流式编排入口: 缓存命中重放 → 路由 → 检索 → LLM 逐块产出。yield SSE 事件 dict。
 
@@ -677,9 +702,12 @@ async def ask_stream(
     """
     start = time.time()
 
+    # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history)
+    effective_history = load_session(session_id) if session_id else history
+
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, history)
+        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history)
         if cache is not None
         else None
     )
@@ -691,6 +719,16 @@ async def ask_stream(
             qa_requests_total.labels(mode=mode, status="cache_hit").inc()
             async for ev in _replay_cache_stream(hit):
                 yield ev
+            # 会话持久化: 缓存命中也记录本轮(与 ask() 非流式路径保持一致)
+            if session_id:
+                save_session(
+                    session_id,
+                    list(effective_history)
+                    + [
+                        ChatTurn(role="user", content=question),
+                        ChatTurn(role="assistant", content=hit.get("answer", "")),
+                    ],
+                )
             return
         qa_cache_misses_total.inc()
 
@@ -714,9 +752,11 @@ async def ask_stream(
     }
 
     gen = (
-        _stream_direct(question, llm, routing, start, router_ms, temperature, history)
+        _stream_direct(question, llm, routing, start, router_ms, temperature, effective_history)
         if routing.skill == "direct"
-        else _stream_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history)
+        else _stream_rag(
+            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, effective_history
+        )
     )
     async for ev in gen:
         if ev["type"] == "sources":
@@ -731,6 +771,16 @@ async def ask_stream(
             cached["qa_metrics"] = ev.get("qa_metrics", {})
             if cache_key is not None:
                 cache.set(cache_key, dict(cached), settings.qa_cache_ttl_s)
+            # 会话持久化: 服务端按 session 维护多轮历史(覆盖 body.history)
+            if session_id:
+                save_session(
+                    session_id,
+                    list(effective_history)
+                    + [
+                        ChatTurn(role="user", content=question),
+                        ChatTurn(role="assistant", content=cached.get("answer", "")),
+                    ],
+                )
         yield ev
 
     qa_latency_seconds.observe(time.time() - start)

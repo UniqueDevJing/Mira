@@ -697,8 +697,29 @@ function renderSteps(el, lb, meta, degLevel) {
 // 多轮对话上下文(客户端维护, 服务端无状态透传); 后端取最近 20 轮
 let chatHistory = [];
 
+// 会话 ID: 首次对话生成并持久化到 localStorage, 服务端按 session 维护历史(刷新/换设备不丢)
+function getSessionId() {
+  let sid = localStorage.getItem('rag_session_id');
+  if (!sid) {
+    sid = (crypto.randomUUID ? crypto.randomUUID() : 's-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    try { localStorage.setItem('rag_session_id', sid); } catch (e) {}
+  }
+  return sid;
+}
+function resetSessionId() {
+  const old = localStorage.getItem('rag_session_id');
+  if (old) {
+    // 通知服务端清除(忽略失败: 本地已丢弃即可)
+    fetch(API + '/qa/session/' + encodeURIComponent(old), {method: 'DELETE', headers: authHeaders()}).catch(() => {});
+  }
+  const sid = 's-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  try { localStorage.setItem('rag_session_id', sid); } catch (e) {}
+  return sid;
+}
+
 function clearChat() {
   chatHistory = [];
+  resetSessionId();
   const chat = document.getElementById('chatArea');
   chat.innerHTML = `<div class="empty-tip"><i class="fa fa-commenting-o"></i><p>上传文档后即可开始提问</p></div>`;
 }
@@ -741,7 +762,7 @@ async function askQuestion() {
       headers:{'Content-Type':'application/json', ...authHeaders()},
       body: JSON.stringify({question: q, top_k: topK, temperature: temperature,
         mode: mode==='dense'?'vector':mode, enable_self_retrieval: false,
-        history: chatHistory.slice(0, -1)})});
+        history: chatHistory.slice(0, -1), session_id: getSessionId()})});
     if (!r.ok) throw new Error('HTTP '+r.status);
     const reader = r.body.getReader();
     const decoder = new TextDecoder();

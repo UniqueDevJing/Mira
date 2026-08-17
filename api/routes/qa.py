@@ -12,6 +12,7 @@ from api.core.document_store import get_document_store
 from api.core.limiter import limiter
 from api.core.orchestrator import ask as orchestrate
 from api.core.orchestrator import ask_stream as orchestrate_stream
+from api.core.session_store import clear_session, load_session
 from api.schemas.qa import QARequest, QAResponse, SourceDocument, TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ async def ask_question(req: QARequest):
         temperature=req.temperature,
         mode=req.mode,
         history=req.history,
+        session_id=req.session_id,
     )
     latency_ms = (time.time() - start) * 1000
 
@@ -123,6 +125,7 @@ async def ask_question_stream(req: QARequest):
                 temperature=req.temperature,
                 mode=req.mode,
                 history=req.history,
+                session_id=req.session_id,
             ):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":
@@ -155,6 +158,19 @@ async def ask_question_stream(req: QARequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/session/{session_id}")
+async def get_session(session_id: str):
+    """读取会话历史(用于前端刷新后恢复上下文)。"""
+    return {"session_id": session_id, "history": [t.model_dump() for t in load_session(session_id)]}
+
+
+@router.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    """清除会话历史(对应前端『清空对话』)。"""
+    clear_session(session_id)
+    return {"session_id": session_id, "cleared": True}
 
 
 # 后台任务集合: asyncio.create_task 不存引用可能被 GC 中途取消 (事件循环无强引用)
