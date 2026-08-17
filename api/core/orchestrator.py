@@ -49,6 +49,7 @@ from api.core.metrics import (
 from api.core.qa_cache import get_qa_cache
 from api.core.qa_metrics import _calc_qa_metrics, _faithfulness
 from api.core.session_store import load_session, save_session
+from api.core.auth import KBForbiddenError
 from api.schemas.qa import ChatTurn
 from api.state import get_bm25_index, get_embedder, get_reranker, get_vector_store
 from engines.embedding.embedder import EmbeddingService
@@ -123,6 +124,14 @@ RAG_SYSTEM_PROMPT = """你是严谨的知识库助手，只能依据参考文档
 RAG_KBS = [s["kb"] for s in SKILLS.values() if s["kb"]]  # ["service", "tech"]
 
 
+def _candidate_kbs(allowed_kbs: list[str] | None) -> list[str]:
+    """按 principal 授权范围收窄候选知识库; None = 不限制(全部)。"""
+    if not allowed_kbs:
+        return RAG_KBS
+    allowed = set(allowed_kbs)
+    return [k for k in RAG_KBS if k in allowed]
+
+
 def _history_to_messages(history) -> list[dict]:
     """多轮历史 → LLM messages（仅取 user/assistant 轮，截断到最近 20 轮防上下文膨胀）。
 
@@ -166,14 +175,24 @@ def _remaining(start: float, cap: float) -> float:
 
 
 async def _route(
-    question: str, skill: str | None, llm: "LLMClient | SyncLLMClient", start: float
+    question: str,
+    skill: str | None,
+    llm: "LLMClient | SyncLLMClient",
+    start: float,
+    candidate_kbs: list[str] | None = None,
 ) -> tuple[RoutingResult, float]:
-    """路由: 手动指定 Skill 直通, 否则 LLM 分类。返回 (routing, router_ms)。"""
+    """路由: 手动指定 Skill 直通, 否则 LLM 分类。返回 (routing, router_ms)。
+
+    candidate_kbs: 授权范围内的候选库; 手动指定 skill 若指向非授权库则放弃直通, 交 LLM 自动路由(仍受 ask 层 RBAC 兜底拦截)。
+    """
     if skill and skill in SKILLS:
-        routing = RoutingResult(skill, SKILLS[skill]["kb"], 1.0, "manual")
-    else:
-        router = IntentRouter(llm_client=llm)
-        routing = await router.route(question)
+        kb = SKILLS[skill]["kb"]
+        if candidate_kbs is None or kb in set(candidate_kbs):
+            routing = RoutingResult(skill, kb, 1.0, "manual")
+            track_routing.labels(source=routing.source, skill=routing.skill).inc()
+            return routing, (time.time() - start) * 1000
+    router = IntentRouter(llm_client=llm)
+    routing = await router.route(question)
     track_routing.labels(source=routing.source, skill=routing.skill).inc()
     return routing, (time.time() - start) * 1000
 
@@ -187,12 +206,18 @@ async def ask(
     mode: str = "hybrid",
     history=None,
     session_id=None,
+    allowed_kbs=None,
 ) -> dict:
-    """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。"""
+    """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。
+
+    allowed_kbs: principal 可访问的知识库集合(None=不限制); 自动路由命中非授权库时抛 KBForbiddenError。
+    """
     start = time.time()
 
     # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history, 刷新/换设备不丢)
     effective_history = load_session(session_id) if session_id else history
+
+    candidate_kbs = _candidate_kbs(allowed_kbs)
 
     # QA 结果缓存: 相同输入指纹命中则跳过路由+检索+LLM, 直接返回缓存
     cache = get_qa_cache() if settings.qa_cache_enabled else None
@@ -223,13 +248,26 @@ async def ask(
         qa_cache_misses_total.inc()
 
     llm = get_llm_client()
-    routing, router_ms = await _route(question, skill, llm, start)
+    routing, router_ms = await _route(question, skill, llm, start, candidate_kbs)
+
+    # RBAC: 自动/兜底路由命中了 principal 无权访问的库 → 拒绝 (路由层转 403)
+    if allowed_kbs is not None and routing.kb is not None and routing.kb not in set(allowed_kbs):
+        raise KBForbiddenError(f"无权访问知识库: {routing.kb}")
 
     if routing.skill == "direct":
         result = await _skill_direct(question, llm, routing, start, temperature, effective_history)
     else:
         result = await _skill_rag(
-            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, effective_history
+            question,
+            routing,
+            llm,
+            top_k,
+            start,
+            enable_self_retrieval,
+            temperature,
+            mode,
+            effective_history,
+            allowed_kbs=allowed_kbs,
         )
 
     # 先组装完整 result (router_ms/qa_metrics) 再写缓存 — 原 cache.set 在 qa_metrics 计算前执行,
@@ -274,6 +312,7 @@ async def _retrieve_context(
     start: float,
     enable_self_retrieval: bool = False,
     mode: str = "hybrid",
+    candidate_kbs: list[str] | None = None,
 ) -> dict:
     """检索上下文: 预处理 → Embedding → 向量|BM25 → 图谱增强 → RRF → 跨库兜底 → Rerank。
 
@@ -313,7 +352,7 @@ async def _retrieve_context(
     # top1 < 阈值 → 跨库兜底 (并行, 独立预算; 仅 hybrid 模式, 保持 vector/graph 语义纯净)
     cross_kb_kbs = []
     if mode == "hybrid" and fused and fused[0].get("score", 0.0) < settings.cross_kb_threshold:
-        fused, cross_kb_kbs = await _cross_kb_fallback(fused, vq, bq, kb, top_k, start)
+        fused, cross_kb_kbs = await _cross_kb_fallback(fused, vq, bq, kb, top_k, start, candidate_kbs)
         for to_kb in cross_kb_kbs:
             cross_kb_fallback_total.labels(from_kb=kb, to_kb=to_kb).inc()
 
@@ -547,9 +586,13 @@ async def _skill_rag(
     temperature: float = 0.1,
     mode: str = "hybrid",
     history=None,
+    allowed_kbs=None,
 ) -> dict:
     kb = routing.kb
-    retr = await _retrieve_context(question, routing, top_k, start, enable_self_retrieval, mode=mode)
+    candidate_kbs = _candidate_kbs(allowed_kbs)
+    retr = await _retrieve_context(
+        question, routing, top_k, start, enable_self_retrieval, mode=mode, candidate_kbs=candidate_kbs
+    )
     docs = retr["docs"]
     context = retr["context"]
     degradation = retr["degradation"]
@@ -690,6 +733,7 @@ async def ask_stream(
     mode: str = "hybrid",
     history=None,
     session_id=None,
+    allowed_kbs=None,
 ):
     """流式编排入口: 缓存命中重放 → 路由 → 检索 → LLM 逐块产出。yield SSE 事件 dict。
 
@@ -704,6 +748,7 @@ async def ask_stream(
 
     # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history)
     effective_history = load_session(session_id) if session_id else history
+    candidate_kbs = _candidate_kbs(allowed_kbs)
 
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
@@ -734,7 +779,11 @@ async def ask_stream(
 
     llm = get_llm_client()
 
-    routing, router_ms = await _route(question, skill, llm, start)
+    routing, router_ms = await _route(question, skill, llm, start, candidate_kbs)
+
+    # RBAC: 自动/兜底路由命中非授权库 → 拒绝 (路由层转 403)
+    if allowed_kbs is not None and routing.kb is not None and routing.kb not in set(allowed_kbs):
+        raise KBForbiddenError(f"无权访问知识库: {routing.kb}")
 
     yield {
         "type": "meta",
@@ -755,7 +804,16 @@ async def ask_stream(
         _stream_direct(question, llm, routing, start, router_ms, temperature, effective_history)
         if routing.skill == "direct"
         else _stream_rag(
-            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, effective_history
+            question,
+            routing,
+            llm,
+            top_k,
+            start,
+            enable_self_retrieval,
+            temperature,
+            mode,
+            effective_history,
+            allowed_kbs=allowed_kbs,
         )
     )
     async for ev in gen:
@@ -843,9 +901,13 @@ async def _stream_rag(
     temperature: float = 0.1,
     mode: str = "hybrid",
     history=None,
+    allowed_kbs=None,
 ):
     """流式 RAG Skill: 检索 → 发 sources → 流式 LLM 生成。"""
-    retr = await _retrieve_context(question, routing, top_k, start, enable_self_retrieval, mode=mode)
+    candidate_kbs = _candidate_kbs(allowed_kbs)
+    retr = await _retrieve_context(
+        question, routing, top_k, start, enable_self_retrieval, mode=mode, candidate_kbs=candidate_kbs
+    )
     docs = retr["docs"]
     context = retr["context"]
     degradation = retr["degradation"]
@@ -1077,13 +1139,20 @@ async def _parallel_retrieve(vector_store, bm25, q_emb, bm25_query: str, top_k: 
 
 
 async def _cross_kb_fallback(
-    fused: list[dict], vector_query: str, bm25_query: str, current_kb: str, top_k: int, start: float
+    fused: list[dict],
+    vector_query: str,
+    bm25_query: str,
+    current_kb: str,
+    top_k: int,
+    start: float,
+    candidate_kbs: list[str] | None = None,
 ):
     """跨库兜底: 并行检索其他非空 RAG 库, 独立预算内合并结果。
 
     返回 (merged_docs, 命中的库列表)。兜底结果随后参与统一 Rerank。
+    candidate_kbs: RBAC 授权范围, 仅在该范围内跨库; None=全部。
     """
-    siblings = [k for k in RAG_KBS if k != current_kb]
+    siblings = [k for k in (candidate_kbs or RAG_KBS) if k != current_kb]
     # 跳过空库（BM25 无文档 → 向量大概率也空, 省预算）
     non_empty = [k for k in siblings if len(get_bm25_index(k)) > 0]
     if not non_empty:

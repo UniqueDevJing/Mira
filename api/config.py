@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     # API 鉴权: 启用后外部请求必须带 X-API-Key / Bearer
     # 注意: security.py 以 os.environ 优先 (支持运行时/测试动态覆盖), 此处读 .env 兜底
     api_key_enabled: bool = False
-    api_key: str = ""
+    api_key: str = ""  # 单 Key 兼容 (视为 admin, 可访问全部知识库)
+    # 多 Key 白名单: JSON 映射 "<key>": {"name": str, "kbs": [str] | "*", "role": "admin"|"reader"}
+    # kbs="*" / 缺省 / null = 全部知识库; role 仅语义标记, 实际权限由 allowed_kbs 决定
+    api_key_whitelist: str = ""
 
     # Embedding
     embedding_model: str = "BAAI/bge-small-zh-v1.5"

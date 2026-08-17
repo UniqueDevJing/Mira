@@ -106,14 +106,16 @@ def patched_session(monkeypatch):
     monkeypatch.setattr(oc, "get_qa_cache", lambda: None)  # 关缓存, 强制走生成
 
     # 检索/路由/重排 stub: 让 _skill_rag 走 direct 之外的分支返回稳定上下文
-    async def _fake_route(q, skill, llm_client, start):
+    async def _fake_route(q, skill, llm_client, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
         return RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule"), 1.0
 
     monkeypatch.setattr(oc, "_route", _fake_route)
 
-    async def _fake_retrieve(question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid"):
+    async def _fake_retrieve(
+        question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid", candidate_kbs=None
+    ):
         return {
             "docs": [{"content": "退款政策: 1-3 工作日", "id": "d1", "chunk_id": "c1", "doc_id": "doc1", "score": 0.9}],
             "context": "退款政策: 1-3 工作日",
@@ -192,7 +194,7 @@ def test_cache_hit_still_persists_session(monkeypatch):
     monkeypatch.setattr(oc, "get_qa_cache", lambda: cache)
     monkeypatch.setattr(settings, "qa_cache_enabled", True)  # 确保走缓存路径(可能被子测试改过)
 
-    async def _fake_route(q, skill, llm_client, start):
+    async def _fake_route(q, skill, llm_client, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
         return RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule"), 1.0

@@ -78,7 +78,9 @@ class _FakeLLM:
 def patched(monkeypatch):
     fake = _FakeLLM()
 
-    async def _fake_retrieve(question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid"):
+    async def _fake_retrieve(
+        question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid", candidate_kbs=None
+    ):
         docs = [{"id": "1", "chunk_id": "c1", "doc_id": "d1", "content": "退款一般一到三个工作日到账", "score": 0.9}]
         return {
             "docs": docs,
@@ -93,7 +95,7 @@ def patched(monkeypatch):
             "graph_context": None,
         }
 
-    async def _fake_route(question, skill, llm, start):
+    async def _fake_route(question, skill, llm, start, candidate_kbs=None):
         return RoutingResult(skill="service", kb="service", confidence=1.0, source="rule"), 0.1
 
     monkeypatch.setattr(orchestrator, "get_qa_cache", lambda: None)

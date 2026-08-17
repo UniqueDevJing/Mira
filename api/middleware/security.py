@@ -2,7 +2,6 @@
 
 import logging
 import os
-import secrets
 import traceback
 
 from fastapi import HTTPException, Request
@@ -46,26 +45,24 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 仅在启用时验证. os.environ 优先 (测试/运行时动态覆盖), 否则读 settings (.env 注入)
         from api.config import settings
+        from api.core.auth import authenticate, anonymous_admin, loopback_principal
 
         enabled = os.environ.get("RAG_API_KEY_ENABLED") or ("true" if settings.api_key_enabled else "false")
         if enabled.lower() != "true":
+            # 鉴权关闭: 注入 anonymous admin 主体, 路由层 RBAC 逻辑仍可一致运行
+            request.state.principal = anonymous_admin()
             return await call_next(request)
 
         if _is_exempt(request.url.path):
+            request.state.principal = anonymous_admin()
             return await call_next(request)
 
         if _is_local_loopback(request):
+            # 本机直连免鉴权, 但仍是 admin 主体
+            request.state.principal = loopback_principal()
             return await call_next(request)
 
-        expected = os.environ.get("RAG_API_KEY") or settings.api_key
-        if not expected:
-            # fail-closed: 启用鉴权却未配置 Key 属部署错误, 拒绝服务而非静默放行
-            logger.error("RAG_API_KEY_ENABLED=true 但 RAG_API_KEY 为空 — 拒绝所有外部请求 (fail-closed)")
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "服务端未配置 API Key，请联系管理员"},
-            )
-
+        # 启用鉴权且为外部请求: 必须有合法 Key
         provided = request.headers.get(API_KEY_HEADER) or _extract_bearer(request.headers.get("Authorization", ""))
 
         if not provided:
@@ -73,12 +70,17 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={"detail": "缺少 API Key，请通过 X-API-Key 请求头或 Authorization: Bearer <key> 提供"},
             )
-        if not secrets.compare_digest(provided, expected):
+
+        principal = authenticate(provided)
+        if principal is None:
+            # fail-closed: 提供了 Key 但不在白名单 → 拒绝 (不泄露是否启用)
+            logger.warning("API Key 校验失败 (不在白名单): %s", request.url.path)
             return JSONResponse(
                 status_code=403,
-                content={"detail": "API Key 无效"},
+                content={"detail": "API Key 无效或无访问权限"},
             )
 
+        request.state.principal = principal
         return await call_next(request)
 
 

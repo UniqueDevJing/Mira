@@ -5,15 +5,18 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
+from fastapi import HTTPException
 
+from api.core.auth import KBForbiddenError, get_principal
 from api.core.document_store import get_document_store
 from api.core.limiter import limiter
 from api.core.orchestrator import ask as orchestrate
 from api.core.orchestrator import ask_stream as orchestrate_stream
 from api.core.session_store import clear_session, load_session
 from api.schemas.qa import QARequest, QAResponse, SourceDocument, TokenUsage
+from engines.router.routing_rules import SKILLS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/qa", tags=["qa"])
@@ -30,20 +33,31 @@ def _rate_limited(fn):
 
 @router.post("/ask", response_model=QAResponse)
 @_rate_limited
-async def ask_question(req: QARequest):
+async def ask_question(req: QARequest, request: Request):
     start = time.time()
 
+    # RBAC: 按 principal 授权范围做知识库级拦截
+    principal = get_principal(request)
+    if req.skill and principal.allowed_kbs is not None:
+        kb = SKILLS.get(req.skill, {}).get("kb")
+        if kb is not None and kb not in principal.allowed_kbs:
+            raise HTTPException(status_code=403, detail=f"该 API Key 无权访问知识库: {req.skill}")
+
     # 编排层: Router 路由 → Skill 执行（分阶段超时/降级/跨库兜底）
-    result = await orchestrate(
-        req.question,
-        skill=req.skill,
-        top_k=req.top_k,
-        enable_self_retrieval=req.enable_self_retrieval,
-        temperature=req.temperature,
-        mode=req.mode,
-        history=req.history,
-        session_id=req.session_id,
-    )
+    try:
+        result = await orchestrate(
+            req.question,
+            skill=req.skill,
+            top_k=req.top_k,
+            enable_self_retrieval=req.enable_self_retrieval,
+            temperature=req.temperature,
+            mode=req.mode,
+            history=req.history,
+            session_id=req.session_id,
+            allowed_kbs=principal.allowed_kbs,
+        )
+    except KBForbiddenError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     latency_ms = (time.time() - start) * 1000
 
     token_usage = result.get("token_usage") or {}
@@ -105,12 +119,17 @@ async def get_eval_summary():
 
 @router.post("/ask/stream")
 @_rate_limited
-async def ask_question_stream(req: QARequest):
+async def ask_question_stream(req: QARequest, request: Request):
     """SSE 流式问答 — 逐块返回 answer，首 token 后即可渲染。
 
     事件流: meta → sources → delta(多) → done。
     保留 JSON `/ask` 端点不变（向后兼容 + 非流式客户端）。
     """
+    principal = get_principal(request)
+    if req.skill and principal.allowed_kbs is not None:
+        kb = SKILLS.get(req.skill, {}).get("kb")
+        if kb is not None and kb not in principal.allowed_kbs:
+            raise HTTPException(status_code=403, detail=f"该 API Key 无权访问知识库: {req.skill}")
 
     start = time.time()
 
@@ -126,6 +145,7 @@ async def ask_question_stream(req: QARequest):
                 mode=req.mode,
                 history=req.history,
                 session_id=req.session_id,
+                allowed_kbs=principal.allowed_kbs,
             ):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":
@@ -135,6 +155,9 @@ async def ask_question_stream(req: QARequest):
                 elif ev.get("type") == "done":
                     done = ev
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except KBForbiddenError as e:
+            logger.warning("流式问答 RBAC 拒绝: %s", str(e)[:120])
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)}, ensure_ascii=False)}\n\n"
         except Exception as e:  # noqa: BLE001 — SSE 兜底: 客户端能区分正常 done / 异常中断
             logger.error("流式问答中断: %s", str(e)[:200])
             yield f"data: {json.dumps({'type': 'error', 'detail': '生成中断，请重试'}, ensure_ascii=False)}\n\n"

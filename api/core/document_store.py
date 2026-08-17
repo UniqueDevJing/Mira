@@ -166,16 +166,27 @@ class DocumentStore:
                 return dict(row)
             return None
 
-    def list_all(self, page: int = 1, size: int = 20) -> dict:
-        """列出文档（分页）"""
+    def list_all(self, page: int = 1, size: int = 20, kb_in: list[str] | None = None) -> dict:
+        """列出文档（分页）。
+
+        kb_in: 仅返回这些知识库的文档 (KB 级 RBAC 用); None = 全部。
+        """
         offset = (page - 1) * size
         with self._get_conn() as conn:
+            if kb_in is not None:
+                placeholders = ",".join("?" for _ in kb_in) or "?"
+                where = f"WHERE knowledge_base IN ({placeholders})"
+                params = list(kb_in)
+            else:
+                where = ""
+                params = []
             # 获取总数
-            total = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+            total = conn.execute(f"SELECT COUNT(*) FROM documents {where}", params).fetchone()[0]
 
             # 获取分页数据
             rows = conn.execute(
-                "SELECT * FROM documents ORDER BY created_at DESC LIMIT ? OFFSET ?", (size, offset)
+                f"SELECT * FROM documents {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                params + [size, offset],
             ).fetchall()
 
             return {

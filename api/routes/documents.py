@@ -6,8 +6,9 @@ import os
 import re
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
 
+from api.core.auth import get_principal
 from api.core.document_store import get_document_store
 from api.core.metrics import document_uploads_total
 from api.schemas.documents import (
@@ -47,6 +48,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),  # noqa: B008 — FastAPI 依赖注入的惯用写法
     knowledge_base: str = Form("documents"),
+    request: Request = None,
 ):
     from api.config import settings
 
@@ -55,6 +57,12 @@ async def upload_document(
     # 知识库名白名单: 防空名/路径字符 (kb 用于 LanceDB 表名 rag_<kb>)
     if not knowledge_base or not re.fullmatch(r"[A-Za-z0-9_-]+", knowledge_base):
         raise HTTPException(status_code=400, detail="非法知识库名称")
+
+    # RBAC: 上传目标知识库必须在 principal 授权范围内
+    if request is not None:
+        principal = get_principal(request)
+        if principal.allowed_kbs is not None and knowledge_base not in principal.allowed_kbs:
+            raise HTTPException(status_code=403, detail=f"该 API Key 无权写入知识库: {knowledge_base}")
 
     # 大小限制: 优先按 Content-Length 头预检, 再分块读入边读边限 (防绕过头全量读入内存)
     max_bytes = settings.max_upload_mb * 1024 * 1024
@@ -98,10 +106,18 @@ async def upload_document(
 
 
 @router.get("/{doc_id}/status", response_model=DocumentStatusResponse)
-async def get_document_status(doc_id: str):
+async def get_document_status(doc_id: str, request: Request = None):
     doc_store = get_document_store()
     doc = await asyncio.to_thread(doc_store.get, doc_id)
     if doc:
+        # RBAC: 非授权知识库文档不可见
+        if request is not None:
+            principal = get_principal(request)
+            if (
+                principal.allowed_kbs is not None
+                and (doc.get("knowledge_base") or "documents") not in principal.allowed_kbs
+            ):
+                raise HTTPException(status_code=403, detail="该 API Key 无权访问此文档所在知识库")
         return DocumentStatusResponse(
             doc_id=doc["doc_id"],
             filename=doc["filename"],
@@ -113,9 +129,11 @@ async def get_document_status(doc_id: str):
 
 
 @router.get("", response_model=DocumentListResponse)
-async def list_documents(page: int = 1, size: int = 20):
+async def list_documents(page: int = 1, size: int = 20, request: Request = None):
     doc_store = get_document_store()
-    result = await asyncio.to_thread(doc_store.list_all, page=page, size=size)
+    # RBAC: 仅列出 principal 授权范围内的知识库文档
+    kb_in = get_principal(request).allowed_kbs if request is not None else None
+    result = await asyncio.to_thread(doc_store.list_all, page=page, size=size, kb_in=kb_in)
     return DocumentListResponse(
         items=[
             DocumentListItem(doc_id=d["doc_id"], filename=d["filename"], status=d["status"]) for d in result["items"]
@@ -125,12 +143,20 @@ async def list_documents(page: int = 1, size: int = 20):
 
 
 @router.delete("/{doc_id}")
-async def delete_document(doc_id: str):
+async def delete_document(doc_id: str, request: Request = None):
     """删除文档: SQLite 记录 + 向量 + BM25 索引同步清理, 防检索残留。"""
     doc_store = get_document_store()
     doc = await asyncio.to_thread(doc_store.get, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
+    # RBAC: 非授权知识库文档不可删
+    if request is not None:
+        principal = get_principal(request)
+        if (
+            principal.allowed_kbs is not None
+            and (doc.get("knowledge_base") or "documents") not in principal.allowed_kbs
+        ):
+            raise HTTPException(status_code=403, detail="该 API Key 无权删除此文档所在知识库")
     kb = doc.get("knowledge_base") or "documents"
 
     try:
