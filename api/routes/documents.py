@@ -136,7 +136,13 @@ async def list_documents(page: int = 1, size: int = 20, request: Request = None)
     result = await asyncio.to_thread(doc_store.list_all, page=page, size=size, kb_in=kb_in)
     return DocumentListResponse(
         items=[
-            DocumentListItem(doc_id=d["doc_id"], filename=d["filename"], status=d["status"]) for d in result["items"]
+            DocumentListItem(
+                doc_id=d["doc_id"],
+                filename=d["filename"],
+                status=d["status"],
+                knowledge_base=d.get("knowledge_base"),
+            )
+            for d in result["items"]
         ],
         total=result["total"],
     )

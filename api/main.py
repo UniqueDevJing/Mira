@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from api.middleware.security import APIKeyMiddleware, error_sanitization_handler
-from api.routes import documents, qa
+from api.routes import auth, documents, qa
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,7 @@ if limiter is not None:
 
 app.include_router(documents.router)
 app.include_router(qa.router)
+app.include_router(auth.router)
 
 
 @app.get("/health")
@@ -117,4 +118,12 @@ async def root():
     import os
 
     web_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "index.html")
+    return FileResponse(web_path)
+
+
+@app.get("/admin")
+async def admin():
+    import os
+
+    web_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "admin.html")
     return FileResponse(web_path)

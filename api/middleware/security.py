@@ -11,7 +11,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = logging.getLogger(__name__)
 
 
-EXEMPT_PATHS = {"/health", "/", "/docs", "/openapi.json", "/redoc"}
+# 管理后台页面 (/admin) 与 Prometheus 指标 (/metrics) 免鉴权直出:
+# - /admin 仅交付静态控制台 HTML, 其内数据接口仍走 X-API-Key 鉴权;
+# - /metrics 供同栈 Prometheus 抓取 (跨容器非 loopback 客户端), 内部监控标准做法。
+EXEMPT_PATHS = {"/health", "/", "/admin", "/metrics", "/docs", "/openapi.json", "/redoc"}
 
 API_KEY_HEADER = "X-API-Key"
 BEARER_PREFIX = "Bearer "
@@ -45,7 +48,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 仅在启用时验证. os.environ 优先 (测试/运行时动态覆盖), 否则读 settings (.env 注入)
         from api.config import settings
-        from api.core.auth import authenticate, anonymous_admin, loopback_principal
+        from api.core.auth import anonymous_admin, authenticate, loopback_principal
 
         enabled = os.environ.get("RAG_API_KEY_ENABLED") or ("true" if settings.api_key_enabled else "false")
         if enabled.lower() != "true":

@@ -32,6 +32,7 @@ class DocumentListItem(BaseModel):
     doc_id: str
     filename: str
     status: DocumentStatus
+    knowledge_base: str | None = None
 
 
 class DocumentListResponse(BaseModel):

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#4f6ef7">
+<title>RAG 2.0 — 管理后台</title>
+<script>
+  (function(){
+    try {
+      var t = localStorage.getItem('rag_theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+  })();
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+<style>
+  :root {
+    --bg: #f3f5fb; --card: #ffffff; --border: #e8ebf4; --text: #1e2433; --text-2: #64708c; --text-3: #9aa4bc;
+    --primary: #4f6ef7; --primary-2: #7b5cf0; --gradient: linear-gradient(135deg, #4f6ef7, #7b5cf0);
+    --ok: #10b981; --warn: #f59e0b; --danger: #ef4444;
+    --shadow-sm: 0 1px 2px rgba(30,36,51,.04), 0 3px 10px rgba(30,36,51,.05);
+    --shadow-md: 0 2px 5px rgba(30,36,51,.06), 0 10px 28px rgba(30,36,51,.09);
+    --radius: 14px;
+    --body-bg:
+      radial-gradient(1200px 600px at 8% -12%, rgba(79,110,247,.14), transparent 55%),
+      radial-gradient(1000px 520px at 92% -8%, rgba(123,92,240,.14), transparent 55%),
+      linear-gradient(180deg, #f9faff 0%, #eef1fc 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text); background: var(--body-bg); background-attachment: fixed; min-height: 100vh; -webkit-font-smoothing: antialiased;
+  }
+  .navbar {
+    position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 rgba(79,110,247,.06), 0 6px 24px rgba(30,36,51,.05);
+  }
+  .navbar-inner { max-width: 1100px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+  .brand { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 9px; background: var(--gradient); display: grid; place-items: center; color: #fff; font-size: 15px; }
+  .spacer { flex: 1; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-2); padding: 7px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: .15s; }
+  .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+  .icon-btn { background: transparent; border: 1px solid var(--border); color: var(--text-2); width: 36px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 15px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .page-sub { color: var(--text-3); font-size: 13px; margin-bottom: 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 20px; }
+  .card h2 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .card h2 .fa { color: var(--primary); }
+  .apikey-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .apikey-row input { flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: #fff; color: var(--text); }
+  .apikey-row input:focus { outline: none; border-color: var(--primary); }
+  .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 14px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { color: var(--text-2); }
+  .kv .v { font-weight: 600; word-break: break-all; text-align: right; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-admin { background: rgba(79,110,247,.12); color: var(--primary); }
+  .badge-reader { background: rgba(100,112,140,.12); color: var(--text-2); }
+  .badge-ok { background: rgba(16,185,129,.14); color: var(--ok); }
+  .badge-warn { background: rgba(245,158,11,.14); color: var(--warn); }
+  .badge-danger { background: rgba(239,68,68,.14); color: var(--danger); }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 22px; text-align: center; cursor: pointer; transition: .15s; color: var(--text-2); }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--primary); background: rgba(79,110,247,.05); }
+  .upload-zone i { font-size: 26px; color: var(--primary); display: block; margin-bottom: 8px; }
+  .form-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
+  select, .btn { padding: 9px 12px; border-radius: 10px; font-size: 13px; border: 1px solid var(--border); background: #fff; color: var(--text); }
+  .btn { background: var(--gradient); color: #fff; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .btn.sm { padding: 6px 10px; font-size: 12px; }
+  .file-name { font-size: 13px; color: var(--text-2); margin-top: 8px; }
+  .alert { padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 12px; }
+  .alert-success { background: rgba(16,185,129,.1); color: #047857; }
+  .alert-danger { background: rgba(239,68,68,.1); color: #b91c1c; }
+  .doc-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .doc-row:last-child { border-bottom: none; }
+  .doc-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .doc-status { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .doc-status.ready { background: var(--ok); } .doc-status.processing { background: var(--warn); } .doc-status.failed, .doc-status.empty { background: var(--danger); }
+  .doc-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  .doc-kb { font-size: 11px; color: var(--text-3); background: rgba(100,112,140,.1); padding: 1px 7px; border-radius: 999px; }
+  .doc-right { display: flex; align-items: center; gap: 10px; }
+  .doc-id { font-size: 11px; color: var(--text-3); font-family: ui-monospace, monospace; }
+  .del-btn { background: transparent; border: none; color: var(--danger); cursor: pointer; font-size: 15px; }
+  .del-btn:hover { opacity: .7; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+  .metric { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; }
+  .metric .num { font-size: 24px; font-weight: 700; color: var(--primary); }
+  .metric .lbl { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .deg-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .empty-tip { color: var(--text-3); font-size: 13px; text-align: center; padding: 18px 0; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot-ok { background: var(--ok); } .dot-err { background: var(--danger); } .dot-wait { background: var(--warn); }
+  .full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<nav class="navbar">
+  <div class="navbar-inner">
+    <div class="brand"><span class="logo"><i class="fa fa-cubes"></i></span> RAG 2.0 · 管理后台</div>
+    <div class="spacer"></div>
+    <a class="btn-ghost" href="/"><i class="fa fa-commenting-o"></i> 返回对话</a>
+    <button class="icon-btn" id="themeToggle" title="切换主题"><i class="fa fa-moon-o"></i></button>
+  </div>
+</nav>
+
+<main>
+  <div class="page-title">系统管理后台</div>
+  <div class="page-sub">身份权限 · 文档管理 · 质量观测　<span id="apiStatus"></span></div>
+
+  <div class="grid">
+    <!-- 身份权限 -->
+    <section class="card" id="card-auth">
+      <h2><i class="fa fa-id-card"></i> 当前身份与权限</h2>
+      <div class="apikey-row">
+        <input id="apiKeyInput" type="text" placeholder="可选：填入 X-API-Key 后点保存" />
+        <button class="btn sm" id="saveKey"><i class="fa fa-floppy-o"></i> 保存</button>
+      </div>
+      <div id="authBody"><div class="empty-tip"><i class="fa fa-spinner fa-spin"></i> 加载中...</div></div>
+    </section>
+
+    <!-- 质量指标 -->
+    <section class="card" id="card-metrics">
+      <h2><i class="fa fa-line-chart"></i> 问答质量指标</h2>
+      <div class="metrics-grid" id="metricsGrid"><div class="empty-tip"><i class="fa fa-spinner fa-spin"></i> 解析 /metrics ...</div></div>
+      <div class="deg-list" id="degList"></div>
+    </section>
+
+    <!-- 上传 -->
+    <section class="card" id="card-upload">
+      <h2><i class="fa fa-cloud-upload"></i> 上传文档</h2>
+      <div class="upload-zone" id="dropZone">
+        <i class="fa fa-file-o"></i>
+        <div>点击或拖拽文件到此处</div>
+        <div style="font-size:12px;margin-top:4px;color:var(--text-3)">PDF / Word / 图片 / 文本 等</div>
+        <input type="file" id="fileInput" style="display:none" />
+      </div>
+      <div class="file-name" id="selectedFile" style="display:none"></div>
+      <div class="form-row">
+        <select id="kbSelect">
+          <option value="documents">默认库 (documents)</option>
+          <option value="service">客服话术库 (service)</option>
+          <option value="tech">技术文档库 (tech)</option>
+        </select>
+        <button class="btn" id="uploadBtn" disabled><i class="fa fa-rocket"></i> 上传并解析</button>
+      </div>
+      <div id="uploadResult"></div>
+    </section>
+
+    <!-- 文档列表 -->
+    <section class="card" id="card-docs">
+      <h2><i class="fa fa-folder-open"></i> 文档列表 <span class="doc-id" id="docCount"></span></h2>
+      <div id="docList"><div class="empty-tip"><i class="fa fa-spinner fa-spin"></i> 加载中...</div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const API = '/api/v1';
+function authHeaders() {
+  const k = localStorage.getItem('rag_api_key') || '';
+  return k ? {'X-API-Key': k} : {};
+}
+async function apiFetch(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) { let msg = 'HTTP ' + r.status; try { const d = await r.json(); if (d.detail) msg = d.detail; } catch(e) {} throw new Error(msg); }
+  return r;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toggleTheme() {
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('rag_theme', next); } catch(e) {}
+  document.getElementById('themeToggle').innerHTML = next === 'dark' ? '<i class="fa fa-sun-o"></i>' : '<i class="fa fa-moon-o"></i>';
+}
+document.getElementById('themeToggle').onclick = toggleTheme;
+document.getElementById('themeToggle').innerHTML = document.documentElement.getAttribute('data-theme') === 'dark' ? '<i class="fa fa-sun-o"></i>' : '<i class="fa fa-moon-o"></i>';
+
+// ── 初始化 ──
+document.getElementById('apiKeyInput').value = localStorage.getItem('rag_api_key') || '';
+document.getElementById('saveKey').onclick = () => {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('rag_api_key', k);
+  loadIdentity(); loadDocs(); loadMetrics();
+};
+(async () => {
+  try {
+    await fetch('/health', {headers: authHeaders()});
+    document.getElementById('apiStatus').innerHTML = '<span class="status-dot dot-ok"></span>API 在线';
+  } catch(e) { document.getElementById('apiStatus').innerHTML = '<span class="status-dot dot-err"></span>API 离线'; }
+  loadIdentity(); loadDocs(); loadMetrics();
+})();
+
+// ── 身份权限 ──
+async function loadIdentity() {
+  const el = document.getElementById('authBody');
+  try {
+    const r = await apiFetch(API + '/auth/me', {headers: authHeaders()});
+    const p = await r.json();
+    const roleBadge = p.is_admin ? '<span class="badge badge-admin">admin</span>' : '<span class="badge badge-reader">reader</span>';
+    const kbs = (p.allowed_kbs == null) ? '<span class="badge badge-ok">全部知识库</span>' : (p.allowed_kbs.length ? p.allowed_kbs.map(k => `<span class="doc-kb">${escapeHtml(k)}</span>`).join(' ') : '<span class="badge badge-danger">无权限</span>');
+    el.innerHTML = `
+      <div class="kv"><span class="k">Key 标识</span><span class="v">${escapeHtml(p.key_id)}</span></div>
+      <div class="kv"><span class="k">名称</span><span class="v">${escapeHtml(p.name)}</span></div>
+      <div class="kv"><span class="k">角色</span><span class="v">${roleBadge}</span></div>
+      <div class="kv"><span class="k">可访问知识库</span><span class="v" style="text-align:right;display:block;margin-top:6px">${kbs}</span></div>`;
+  } catch(e) { el.innerHTML = `<div class="alert alert-danger"><i class="fa fa-times-circle"></i> 加载失败: ${escapeHtml(e.message)}</div>`; }
+}
+
+// ── 质量指标 (解析 Prometheus /metrics) ──
+async function loadMetrics() {
+  const grid = document.getElementById('metricsGrid');
+  const deg = document.getElementById('degList');
+  try {
+    const r = await fetch('/metrics', {headers: authHeaders()});
+    const text = await r.text();
+    const m = {};
+    text.split('\n').forEach(line => {
+      if (line.startsWith('#')) return;
+      const idx = line.indexOf(' ');
+      if (idx < 0) return;
+      const nameLbl = line.slice(0, idx);
+      const val = parseFloat(line.slice(idx + 1).trim());
+      if (isNaN(val)) return;
+      const name = nameLbl.split('{')[0];
+      if (name === 'rag_degradation_levels_total') {
+        const lm = nameLbl.match(/level="([^"]+)"/);
+        const lvl = lm ? lm[1] : '?';
+        (m.deg = m.deg || {})[lvl] = (m.deg[lvl] || 0) + val;
+      } else if (name.startsWith('rag_qa_faithfulness') || name.startsWith('rag_qa_top1_score')) {
+        if (name.includes('faithfulness') && name.endsWith('_sum')) m.faithSum = (m.faithSum||0) + val;
+        if (name.includes('faithfulness') && name.endsWith('_count')) m.faithCnt = (m.faithCnt||0) + val;
+        if (name.includes('top1_score') && name.endsWith('_sum')) m.top1Sum = (m.top1Sum||0) + val;
+        if (name.includes('top1_score') && name.endsWith('_count')) m.top1Cnt = (m.top1Cnt||0) + val;
+      }
+    });
+    const faith = (m.faithCnt > 0) ? (m.faithSum / m.faithCnt) : null;
+    const top1 = (m.top1Cnt > 0) ? (m.top1Sum / m.top1Cnt) : null;
+    const cards = [
+      {num: faith == null ? '—' : (faith*100).toFixed(1)+'%', lbl: '平均忠实度'},
+      {num: top1 == null ? '—' : (top1*100).toFixed(1)+'%', lbl: '平均 Top1 得分'},
+      {num: m.faithCnt || 0, lbl: '已评估问答数'},
+      {num: Object.values(m.deg||{}).reduce((a,b)=>a+b,0) || 0, lbl: '降级触发次数'},
+    ];
+    grid.innerHTML = cards.map(c => `<div class="metric"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('');
+    if (m.deg && Object.keys(m.deg).length) {
+      deg.innerHTML = '<span style="font-size:12px;color:var(--text-3)">降级层级分布：</span>' +
+        Object.entries(m.deg).map(([k,v]) => `<span class="badge badge-warn">L${escapeHtml(k)}: ${v}</span>`).join(' ');
+    } else { deg.innerHTML = ''; }
+  } catch(e) { grid.innerHTML = `<div class="alert alert-danger" style="grid-column:1/-1"><i class="fa fa-times-circle"></i> 指标加载失败: ${escapeHtml(e.message)}</div>`; }
+}
+
+// ── 上传 ──
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+let selectedFile = null;
+dropZone.onclick = () => fileInput.click();
+dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
+dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); };
+fileInput.onchange = e => { if (e.target.files.length) handleFile(e.target.files[0]); };
+function handleFile(f) {
+  selectedFile = f;
+  document.getElementById('selectedFile').style.display = 'block';
+  document.getElementById('selectedFile').textContent = '已选：' + f.name;
+  document.getElementById('uploadBtn').disabled = false;
+}
+document.getElementById('uploadBtn').onclick = async () => {
+  if (!selectedFile) return;
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> 解析中...';
+  const fd = new FormData(); fd.append('file', selectedFile); fd.append('knowledge_base', document.getElementById('kbSelect').value);
+  try {
+    const r = await apiFetch(API + '/documents/upload', {method:'POST', body: fd, headers: authHeaders()});
+    const data = await r.json();
+    document.getElementById('uploadResult').innerHTML = `<div class="alert alert-success"><i class="fa fa-check-circle"></i> 上传成功 · ID <code>${escapeHtml(data.doc_id)}</code> · 状态 ${escapeHtml(data.status)}</div>`;
+    selectedFile = null; document.getElementById('selectedFile').style.display = 'none'; fileInput.value = '';
+    loadDocs(); startPolling();
+  } catch(e) {
+    document.getElementById('uploadResult').innerHTML = `<div class="alert alert-danger"><i class="fa fa-times-circle"></i> 上传失败: ${escapeHtml(e.message)}</div>`;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="fa fa-rocket"></i> 上传并解析';
+};
+
+// ── 文档列表 + 轮询 ──
+let polling = false;
+async function loadDocs() {
+  const el = document.getElementById('docList');
+  try {
+    const r = await apiFetch(API + '/documents', {headers: authHeaders()});
+    const data = await r.json();
+    document.getElementById('docCount').textContent = '共 ' + data.total + ' 篇';
+    if (!data.items.length) { el.innerHTML = '<div class="empty-tip">暂无文档，请先上传</div>'; return; }
+    el.innerHTML = data.items.map(d => `
+      <div class="doc-row">
+        <div class="doc-left">
+          <span class="doc-status ${escapeHtml(d.status)}"></span>
+          <span class="doc-name" title="${escapeHtml(d.filename)}">${escapeHtml(d.filename)}</span>
+          <span class="doc-kb">${escapeHtml(d.knowledge_base || 'documents')}</span>
+        </div>
+        <div class="doc-right">
+          <span class="doc-id">${escapeHtml((d.doc_id||'').slice(-8))}</span>
+          <button class="del-btn" title="删除" data-doc-id="${escapeHtml(d.doc_id)}"><i class="fa fa-trash-o"></i></button>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div class="empty-tip" style="color:var(--danger)">加载失败: ${escapeHtml(e.message)}</div>`; }
+}
+function startPolling() {
+  if (polling) return; polling = true;
+  const timer = setInterval(async () => {
+    await loadDocs();
+    try {
+      const r = await apiFetch(API + '/documents', {headers: authHeaders()});
+      const data = await r.json();
+      const stillProcessing = (data.items || []).some(d => d.status === 'processing');
+      if (!stillProcessing) { clearInterval(timer); polling = false; }
+    } catch(e) { clearInterval(timer); polling = false; }
+  }, 2500);
+}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.del-btn');
+  if (btn) {
+    const id = btn.dataset.docId;
+    if (!confirm('确认删除文档 ' + id + ' ?\n将同步清理向量和检索索引')) return;
+    (async () => { try { await apiFetch(API + '/documents/' + id, {method:'DELETE', headers: authHeaders()}); loadDocs(); } catch(e) { alert('删除失败: ' + e.message); } })();
+  }
+});
+
+// 指标每 15s 刷新一次
+setInterval(loadMetrics, 15000);
+</script>
+</body>
+</html>
