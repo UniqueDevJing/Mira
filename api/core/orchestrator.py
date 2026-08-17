@@ -115,9 +115,42 @@ RAG_SYSTEM_PROMPT = """你是严谨的知识库助手，只能依据参考文档
 2. 参考文档没有的信息：明确回答"文档中未提及"，不得推测、编造或脑补
 3. 引用内容标注来源（[来源N]），无法标注来源的表述一律不写
 4. 只回答问题本身，不做额外扩展、总结或建议
-5. 回答控制在 300 字以内"""
+5. 回答控制在 300 字以内
+6. 若用户问题指代了前文（如"它""这个""那怎么办"），结合「对话历史」理解指代对象，不要当作全新孤立问题"""
 
 RAG_KBS = [s["kb"] for s in SKILLS.values() if s["kb"]]  # ["service", "tech"]
+
+
+def _history_to_messages(history) -> list[dict]:
+    """多轮历史 → LLM messages（仅取 user/assistant 轮，截断到最近 20 轮防上下文膨胀）。
+
+    兼容 pydantic ChatTurn 对象与裸 dict（便于测试）。非法角色/空内容跳过。
+    """
+    out: list[dict] = []
+    for turn in (history or [])[-20:]:
+        role = getattr(turn, "role", None) if not isinstance(turn, dict) else turn.get("role")
+        content = getattr(turn, "content", None) if not isinstance(turn, dict) else turn.get("content")
+        if role in ("user", "assistant") and content:
+            out.append({"role": role, "content": content})
+    return out
+
+
+def _chat_messages(context: str, question: str, history=None) -> list[dict]:
+    """组装 RAG 生成用 messages: system + 历史 + 当前(参考文档+问题)。"""
+    return (
+        [{"role": "system", "content": RAG_SYSTEM_PROMPT}]
+        + _history_to_messages(history)
+        + [{"role": "user", "content": f"参考文档：\n{context}\n\n问题：{question}"}]
+    )
+
+
+def _direct_messages(question: str, history=None) -> list[dict]:
+    """组装 direct 技能 messages: system + 历史 + 当前(直接回答)。"""
+    return (
+        [{"role": "system", "content": RAG_SYSTEM_PROMPT}]
+        + _history_to_messages(history)
+        + [{"role": "user", "content": f"直接简洁回答用户问题：{question}"}]
+    )
 
 # Embedding 缓存命中统计上报（增量方式写入 Prometheus Counter）
 _cache_stats_last = {"hits": 0, "misses": 0}
@@ -149,6 +182,7 @@ async def ask(
     enable_self_retrieval: bool = False,
     temperature: float = 0.1,
     mode: str = "hybrid",
+    history=None,
 ) -> dict:
     """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。"""
     start = time.time()
@@ -156,7 +190,9 @@ async def ask(
     # QA 结果缓存: 相同输入指纹命中则跳过路由+检索+LLM, 直接返回缓存
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode) if cache is not None else None
+        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, history)
+        if cache is not None
+        else None
     )
     if cache_key is not None:
         hit = cache.get(cache_key)
@@ -173,9 +209,9 @@ async def ask(
     routing, router_ms = await _route(question, skill, llm, start)
 
     if routing.skill == "direct":
-        result = await _skill_direct(question, llm, routing, start, temperature)
+        result = await _skill_direct(question, llm, routing, start, temperature, history)
     else:
-        result = await _skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode)
+        result = await _skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history)
 
     # 先组装完整 result (router_ms/qa_metrics) 再写缓存 — 原 cache.set 在 qa_metrics 计算前执行,
     # 缓存条目永久缺 qa_metrics, 命中路径与 miss 路径契约不一致
@@ -483,6 +519,7 @@ async def _skill_rag(
     enable_self_retrieval: bool = False,
     temperature: float = 0.1,
     mode: str = "hybrid",
+    history=None,
 ) -> dict:
     kb = routing.kb
     retr = await _retrieve_context(question, routing, top_k, start, enable_self_retrieval, mode=mode)
@@ -502,7 +539,7 @@ async def _skill_rag(
         graph_txt = "\n".join(f"- {g}" for g in graph_ctx["graph_context"][:8])
         context = f"{context}\n\n图谱实体关系:\n{graph_txt}"
 
-    answer, token_usage, llm_ms, llm_ok = await _generate(question, context, llm, start, temperature)
+    answer, token_usage, llm_ms, llm_ok = await _generate(question, context, llm, start, temperature, history)
     track_llm_latency.observe(llm_ms / 1000)
     if not llm_ok:
         degradation = max(degradation, 3)
@@ -554,7 +591,7 @@ async def _skill_rag(
 
 
 async def _generate(
-    question: str, context: str, llm: "LLMClient | SyncLLMClient", start: float, temperature: float = 0.1
+    question: str, context: str, llm: "LLMClient | SyncLLMClient", start: float, temperature: float = 0.1, history=None
 ):
     """调用 LLM 生成答案。返回 (answer, token_usage_dict|None, ms, ok)。"""
     t0 = time.time()
@@ -563,10 +600,7 @@ async def _generate(
     try:
         resp = await asyncio.wait_for(
             llm.chat(
-                messages=[
-                    {"role": "system", "content": RAG_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"参考文档：\n{context}\n\n问题：{question}"},
-                ],
+                messages=_chat_messages(context, question, history),
                 temperature=temperature,
                 max_tokens=2000,
             ),
@@ -627,6 +661,7 @@ async def ask_stream(
     enable_self_retrieval: bool = False,
     temperature: float = 0.1,
     mode: str = "hybrid",
+    history=None,
 ):
     """流式编排入口: 缓存命中重放 → 路由 → 检索 → LLM 逐块产出。yield SSE 事件 dict。
 
@@ -641,7 +676,9 @@ async def ask_stream(
 
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode) if cache is not None else None
+        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, history)
+        if cache is not None
+        else None
     )
     if cache_key is not None:
         hit = cache.get(cache_key)
@@ -674,9 +711,9 @@ async def ask_stream(
     }
 
     gen = (
-        _stream_direct(question, llm, routing, start, router_ms, temperature)
+        _stream_direct(question, llm, routing, start, router_ms, temperature, history)
         if routing.skill == "direct"
-        else _stream_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode)
+        else _stream_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history)
     )
     async for ev in gen:
         if ev["type"] == "sources":
@@ -752,6 +789,7 @@ async def _stream_rag(
     enable_self_retrieval: bool = False,
     temperature: float = 0.1,
     mode: str = "hybrid",
+    history=None,
 ):
     """流式 RAG Skill: 检索 → 发 sources → 流式 LLM 生成。"""
     retr = await _retrieve_context(question, routing, top_k, start, enable_self_retrieval, mode=mode)
@@ -777,10 +815,7 @@ async def _stream_rag(
     # 流式 LLM 生成
     gen, r = _run_stream_llm(
         llm,
-        messages=[
-            {"role": "system", "content": RAG_SYSTEM_PROMPT},
-            {"role": "user", "content": f"参考文档：\n{context}\n\n问题：{question}"},
-        ],
+        messages=_chat_messages(context, question, history),
         temperature=temperature,
         max_tokens=2000,
         start=start,
@@ -842,12 +877,12 @@ async def _stream_rag(
 
 
 async def _stream_direct(
-    question: str, llm, routing: RoutingResult, start: float, router_ms: float = 0.0, temperature: float = 0.1
+    question: str, llm, routing: RoutingResult, start: float, router_ms: float = 0.0, temperature: float = 0.1, history=None
 ):
     """流式直接回答 Skill: 仅 LLM, 无检索。"""
     gen, r = _run_stream_llm(
         llm,
-        messages=[{"role": "user", "content": f"直接简洁回答用户问题：{question}"}],
+        messages=_direct_messages(question, history),
         temperature=temperature,
         max_tokens=500,
         start=start,
@@ -892,13 +927,13 @@ async def _stream_direct(
 
 
 async def _skill_direct(
-    question: str, llm: "LLMClient | SyncLLMClient", routing: RoutingResult, start: float, temperature: float = 0.1
+    question: str, llm: "LLMClient | SyncLLMClient", routing: RoutingResult, start: float, temperature: float = 0.1, history=None
 ) -> dict:
     t0 = time.time()
     try:
         resp = await asyncio.wait_for(
             llm.chat(
-                messages=[{"role": "user", "content": f"直接简洁回答用户问题：{question}"}],
+                messages=_direct_messages(question, history),
                 temperature=temperature,
                 max_tokens=500,
             ),

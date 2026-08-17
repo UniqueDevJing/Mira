@@ -464,6 +464,7 @@
         <input id="questionInput" type="text" placeholder="输入你的问题..."
                onkeydown="if(event.key==='Enter')askQuestion()" class="text-input">
         <button onclick="askQuestion()" id="askBtn" class="btn-icon"><i class="fa fa-send"></i></button>
+        <button onclick="clearChat()" id="clearBtn" class="btn-icon btn-ghost" title="清空对话(重置多轮上下文)"><i class="fa fa-trash"></i></button>
       </div>
       <div class="ask-opts">
         <label><input type="radio" name="mode" value="hybrid" checked> 混合检索</label>
@@ -693,9 +694,21 @@ function renderSteps(el, lb, meta, degLevel) {
 }
 
 // 问答
+// 多轮对话上下文(客户端维护, 服务端无状态透传); 后端取最近 20 轮
+let chatHistory = [];
+
+function clearChat() {
+  chatHistory = [];
+  const chat = document.getElementById('chatArea');
+  chat.innerHTML = `<div class="empty-tip"><i class="fa fa-commenting-o"></i><p>上传文档后即可开始提问</p></div>`;
+}
+
 async function askQuestion() {
   const q = document.getElementById('questionInput').value.trim();
   if (!q) return;
+  // 记录用户本轮到历史(本次请求只发送历史中"先前"的轮次, 不含当前问)
+  chatHistory.push({role:'user', content:q});
+  if (chatHistory.length > 40) chatHistory = chatHistory.slice(-40);
   const chat = document.getElementById('chatArea');
   const mode = document.querySelector('input[name="mode"]:checked').value;
   const topK = parseInt(document.getElementById('topK').value);
@@ -727,7 +740,8 @@ async function askQuestion() {
     const r = await fetch(API+'/qa/ask/stream', {method:'POST',
       headers:{'Content-Type':'application/json', ...authHeaders()},
       body: JSON.stringify({question: q, top_k: topK, temperature: temperature,
-        mode: mode==='dense'?'vector':mode, enable_self_retrieval: false})});
+        mode: mode==='dense'?'vector':mode, enable_self_retrieval: false,
+        history: chatHistory.slice(0, -1)})});
     if (!r.ok) throw new Error('HTTP '+r.status);
     const reader = r.body.getReader();
     const decoder = new TextDecoder();
@@ -775,6 +789,8 @@ async function askQuestion() {
           ansMeta.innerHTML = `${skillTag} ${routeTag} ${degTag} ${Math.round(latencyMs)}ms · ${sourcesCount} 来源`;
           renderMetrics(ansMetrics, ev.qa_metrics);
           renderSteps(ansSteps, ev.latency_breakdown, ev.retrieval_meta, ev.degradation_level);
+          // 记录助手回答到多轮历史, 供下一轮上下文连贯
+          chatHistory.push({role:'assistant', content: ev.answer || ansText.textContent});
         }
       }
     }

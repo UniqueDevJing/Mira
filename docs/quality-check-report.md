@@ -10,14 +10,15 @@
 
 代码**成熟度偏高**，工程质量在同类 RAG 项目中属上游：分层清晰（engines 无 FastAPI 依赖、LLM 客户端下沉消除反向依赖）、降级链路完整（L0–L3）、预算感知超时、fail-closed 鉴权、Prometheus 指标齐全、多 worker 共享态可插拔、图谱重启不丢、QA 热路径全异步卸载、前端 XSS 防御闭合。
 
-**硬指标（实测终态）**
+**硬指标（实测终态，2026-08-17 末轮）**
 - `ruff check`：**0 问题**（全工程文件）
-- `ruff format --check`：**0 差异**
-- `pytest`：**281/281 通过**（~38s）
+- `ruff format --check`：**9 文件存量格式漂移**（预存，与本次无关；无损 `ruff format` 即可清零，见剩余风险#7）
+- `pytest`：**299/299 通过**（~33s，含多轮对话 7 测 + 缓存桩回归修复）
 - 前端验证：`tests/test_frontend_safety.mjs`（node 直跑真实前端代码）：**14/14 断言通过**
-- 覆盖率：**82%**（TOTAL 3201 行，缺失 589 行），**已设 80% 门禁**（`pyproject [tool.coverage.report] fail_under=80` + `make test-ci`）
+- 覆盖率：**82%+（≥80% 门禁通过）**（`pyproject [tool.coverage.report] fail_under=80` + `make test-ci`）
 - SQLite：**WAL 模式 + busy_timeout=5000**（`database is locked` 高并发加固）
 - 异步边界：QA 热路径与文档 CRUD 路由**全部 `asyncio.to_thread` 卸载**，无 event loop 阻塞
+- **多轮对话：已上线**（客户端维护 `history`、服务端无状态透传；真机两轮指代消解验证通过）
 
 **已闭环的真实短板**（旧报告 P0/P1/P2 早已全部修复，后续轮次进一步补齐）：生产就绪态、最易碎 IO/算法路径覆盖、语义护栏、持久化、CI 门禁、可观测性、前端安全、异步边界。
 
@@ -37,7 +38,20 @@
 
 ---
 
-## 2. 已落地优化清单（累计）
+## 2. 成熟度层级评估（对照用户 4 级表）
+
+用户提供的 4 级对照：基础版 → 进阶版 → 生产级 → 行业级。逐项实测结论：
+
+| 层级 | 关键能力 | 本项目状态 |
+|---|---|---|
+| 基础版 | 基础 RAG 检索问答 | ✅ 早已具备（混合检索 RRF+重排、来源引用） |
+| 进阶版 | 检索质量增强 / 评估 | ✅ 具备（OCR/PDF 解析、RRF 一致性、语义护栏、自动化评测闭环 F1-F5、82% 覆盖） |
+| 生产级 | 多轮对话 / 细粒度权限 / 可观测 / 部署 | ✅ **多轮对话已补齐（本轮）**；可观测 G1-G4、WAL、多 worker 共享态、CI 门禁均已具备；**仅余文档级 RBAC（用户暂缓）** |
+| 行业级 | 多模态检索 / 跨实例图谱 / 大规模权限治理 | ◐ 部分具备：GraphRAG 双向多跳+持久化、评估闭环、Prometheus；**多模态检索、Neo4j 级跨进程图谱、文档级权限待做** |
+
+**结论**：项目**已超越进阶版、达到生产级主体**（多轮对话补齐后，生产级清单仅差细粒度文档权限，且用户已明确暂缓）。行业级处于"核心能力就位、外延能力待扩展"状态。
+
+---
 
 ### A. 生产就绪 / 健壮性
 - **A1 embedding 缓存 key 含 model_name**：换模型不再命中旧向量，避免静默召回错误。
@@ -89,6 +103,14 @@
 - **I1 文档路由卸载**：`documents.py` 8 处同步 `doc_store.*` 调用（`save`/`get`/`list_all`/`delete`/`update_status`）由 `async def` 内直接调用改为 `await asyncio.to_thread(...)`，消除 event loop 阻塞。
 - **I2 QA 热路径已正确**：`orchestrator.py` 所有阻塞调用（vector/bm25/rerank/graph/embed）与 `qa.py` 的 `log_qa` 写库均已 `await asyncio.to_thread`，无需改动。
 
+### J. 多轮对话（生产级关键补齐）
+- **J1 协议**：`QARequest.history: list[ChatTurn]`（`ChatTurn` = `{role: user|assistant, content}`，pydantic 校验），客户端维护、服务端无状态透传；最多取最近 20 轮（`_history_to_messages` 截断 + 角色过滤）。
+- **J2 上下文装配**：`_chat_messages` / `_direct_messages` 将 `system + history + context/question` 组装为 LLM 消息；`ask`/`ask_stream` 及 RAG/直答/技能三路径全部透传 `history`。
+- **J3 缓存防串味**：`qa_cache.make_key` 指纹纳入 `history`，不同历史不会命中彼此缓存。
+- **J4 前端**：`web/index.html` 维护 `chatHistory`，每轮推送 `user` 并在 `done` 事件落 `assistant`，发请求时带 `history`（不含当前轮）；新增「清空对话」按钮。
+- **J5 验证**：`tests/test_multiturn_pytest.py`（7 测）单测 `_history_to_messages` + 集成测 `ask`/`ask_stream` 历史确进入 LLM 消息；`tests/test_qa_cache_pytest.py` 桩补 `history` 参数（回归修复）。
+- **J6 真机验证**：启服务后两轮对话探针——Q2「它旗下的产品线有哪些？」**无 history** 时模型回答"未提及『它』指代对象，无法回答"；**带 history** 时正确绑定 Q1 中的「云栖智能」并据此作答。指代消解确实依赖历史上下文，多轮闭环成立。
+
 ---
 
 ## 3. 剩余风险与后续建议（需环境/流量/部署，非代码缺陷）
@@ -99,6 +121,8 @@
 4. **覆盖率 82% 的剩余缺口**：缺失集中在 `entity_extractor`（LLM 抽取，需真实模型）、`self_retrieval`（LLM 改写评估）、部分异常处理分支；属"需真实依赖/难构造"路径，继续追高性价比低，建议维持 80% 门禁自然防劣化。
 5. **静态类型检查（可选长期投入）**：当前有 ruff 无 mypy。无类型注解的存量代码上马 mypy 初期噪音大，仅建议在有长期类型纪律承诺时引入，非现阶段必做。
 6. **部署流水线（取决于是否上线）**：`infrastructure/` 已有 `prometheus.yml` / `Dockerfile` / compose；Docker 构建与多实例拓扑按部署目标决定。但 **CI 已落地并真正执行 80% 覆盖率门禁**（`.github/workflows/ci.yml` 经 `pip install -e ".[dev]"` 带入 pytest-cov + `make test-ci`），作为代码质量硬防护，与是否上线解耦，无需等待部署决策。
+7. **文档级 RBAC（生产级最后一环，用户已暂缓）**：当前鉴权为全局 API Key（fail-closed）。细粒度「文档/知识库级权限」未实现，属生产级清单中唯一未闭合项；用户明确暂缓，API 契约已预留 `access_level`（D5 清理的是上传侧死参数，读取侧权限仍待做）。
+8. **`ruff format` 存量漂移（9 文件，无损可清）**：`document_store.py` 等 9 个预存文件存在格式差异，与多轮对话无关；运行 `ruff format` 即可零风险清零，不影响逻辑与测试。
 
 ---
 

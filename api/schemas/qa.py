@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 from api.config import settings
 
 
+class ChatTurn(BaseModel):
+    """多轮对话单轮: 由客户端维护并随请求回传。role 限定 user/assistant。"""
+
+    role: str = Field(pattern=r"^(user|assistant)$", description="发言方: user(用户) / assistant(系统)")
+    content: str = Field(min_length=1, max_length=4000, description="该轮文本内容")
+
+
 class QARequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000, description="自然语言问题")
     mode: str = Field(
@@ -20,6 +27,10 @@ class QARequest(BaseModel):
     skill: str | None = Field(
         default=None, pattern=r"^(service|tech|direct)$", description="手动指定技能，跳过 Router 路由"
     )
+    history: list[ChatTurn] = Field(
+        default_factory=list,
+        description="多轮对话历史(客户端维护, 服务端无状态透传), 用于上下文连贯。最多取最近 20 轮",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -28,6 +39,7 @@ class QARequest(BaseModel):
                 "mode": "hybrid",
                 "enable_self_retrieval": False,
                 "top_k": 10,
+                "history": [{"role": "user", "content": "退款多久到账"}, {"role": "assistant", "content": "一般一到三个工作日到账"}],
             }
         }
     }

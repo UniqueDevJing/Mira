@@ -40,6 +40,7 @@ async def ask_question(req: QARequest):
         enable_self_retrieval=req.enable_self_retrieval,
         temperature=req.temperature,
         mode=req.mode,
+        history=req.history,
     )
     latency_ms = (time.time() - start) * 1000
 
@@ -121,6 +122,7 @@ async def ask_question_stream(req: QARequest):
                 enable_self_retrieval=req.enable_self_retrieval,
                 temperature=req.temperature,
                 mode=req.mode,
+                history=req.history,
             ):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":

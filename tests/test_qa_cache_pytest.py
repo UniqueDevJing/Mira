@@ -99,7 +99,7 @@ def test_ask_caches_then_hits(monkeypatch):
     async def fake_route(question, skill, llm, start):
         return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
 
-    async def fake_skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid"):
+    async def fake_skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid", history=None):
         calls["n"] += 1
         return _canned_result()
 
@@ -122,7 +122,7 @@ def test_ask_cache_disabled_runs_each_time(monkeypatch):
     async def fake_route(question, skill, llm, start):
         return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
 
-    async def fake_skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid"):
+    async def fake_skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid", history=None):
         calls["n"] += 1
         return _canned_result()
 
@@ -145,7 +145,7 @@ def test_ask_stream_caches_then_replays(monkeypatch):
     async def fake_route(question, skill, llm, start):
         return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
 
-    async def fake_stream_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid"):
+    async def fake_stream_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode="hybrid", history=None):
         calls["n"] += 1
         yield {"type": "sources", "sources": [{"id": "c1"}], "retrieval_meta": {"top1_score": 0.9}}
         yield {"type": "delta", "content": "RRF 加权融合"}
