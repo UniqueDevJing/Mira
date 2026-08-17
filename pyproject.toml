@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-2.0"
+version = "1.0.0"
+description = "智能文档处理与知识库构建系统"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "pymupdf>=1.24.0",
+    "pdfplumber>=0.11.0",
+    "rapidocr_onnxruntime>=1.2.0",
+    "transformers>=4.46.0",
+    "torch>=2.5.0",
+    "sentence-transformers>=3.3.0",
+    "lancedb>=0.17.0",
+    "jieba>=0.42.1",
+    "opencv-python-headless>=4.10.0",
+    "pillow>=11.0.0",
+    "python-docx>=1.1.0",
+    "numpy>=2.1.0",
+    "httpx>=0.28.0",
+    "aiofiles>=24.1.0",
+    "python-multipart>=0.0.12",
+    "prometheus-client>=0.21.0",
+    "slowapi>=0.1.9",
+]
+
+# 只打包 api + engines 两个 Python 包; web(前端)/infrastructure(docker) 非 Python 包,
+# 不声明则 setuptools 自动发现误判多顶层包导致 pip install . 失败
+[tool.setuptools.packages.find]
+include = ["api*", "engines*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "black>=24.10.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+# 只收集 pytest 风格文件; 旧版手动脚本(test_st.py/test_phase2.py 等)在导入期执行
+# 顶层代码/依赖缺失(slowapi)会破坏收集, 单独用 `python test_xxx.py` 运行
+python_files = ["test_*_pytest.py"]
+# milvus.db/rag-project 是旧项目副本, 其 tests/conftest.py 会污染 sys.path 顶掉当前 engines
+norecursedirs = ["venv", "milvus.db", "lancedb_data", ".idea", "node_modules", ".claude"]
+markers = [
+    "slow: 慢测试 (真实模型/网络), 默认跳过",
+    "integration: 集成测试, 需外部服务",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+# 覆盖率门禁: 质量红线 (CI 跑 `pytest --cov ... --cov-fail-under=80` 时生效)。
+# source 限定 api/engines, omit 排除测试自身, 避免"测自己"虚高。
+[tool.coverage.run]
+source = ["api", "engines"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

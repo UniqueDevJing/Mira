@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+venv
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.idea
+.claude
+lancedb_data
+data
+milvus.db
+web/node_modules
+docs
+tests

@@ -1,0 +1,32 @@
+[
+  {
+    "question": "退货流程是什么",
+    "kb": "service",
+    "reference_answer": "在订单详情页申请退货，选择退货原因并提交，客服人员48小时内处理，审核通过后系统发送退货地址，将商品寄回指定仓库，签收后3天内完成退款。"
+  },
+  {
+    "question": "退款需要多久到账",
+    "kb": "service",
+    "reference_answer": "商品寄回指定仓库签收后3天内完成退款。"
+  },
+  {
+    "question": "如何申请退款",
+    "kb": "service",
+    "reference_answer": "在订单详情页选择申请退款，填写退款原因并提交，客服在48小时内审核处理。"
+  },
+  {
+    "question": "系统使用什么Web框架",
+    "kb": "tech",
+    "reference_answer": "系统使用FastAPI框架提供API接口，FastAPI基于Starlette和Pydantic，性能接近Node.js和Go。"
+  },
+  {
+    "question": "数据库用什么",
+    "kb": "tech",
+    "reference_answer": "系统数据库采用PostgreSQL，向量存储使用LanceDB，部署在Docker容器中。"
+  },
+  {
+    "question": "如何配置大模型API Key",
+    "kb": "tech",
+    "reference_answer": "配置环境变量RAG_LLM_API_KEY后即可调用大模型接口，敏感信息通过环境变量注入而非硬编码。"
+  }
+]

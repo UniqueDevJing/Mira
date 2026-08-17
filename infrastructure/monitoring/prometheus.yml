@@ -1,0 +1,33 @@
+# Prometheus 配置 — RAG 2.0 监控
+# 使用: docker run -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "rag-api"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          service: "rag-2.0-api"
+          env: "development"
+    # 生产环境替换为:
+    # - targets: ["api:8000"]
+
+  - job_name: "rag-milvus"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["milvus-standalone:9091"]
+        labels:
+          service: "milvus"
+    # Milvus 自带 Prometheus 端点
+
+rule_files: []
+
+# 告警规则 (生产环境启用)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]

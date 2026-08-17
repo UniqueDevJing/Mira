@@ -1,0 +1,117 @@
+# RAG 2.0 全面质检报告与优化方案
+
+> 复核日期：2026-08-17 · 执行：Senior Developer（全栈）
+> 范围：`api/`、`engines/` 全量源码 + `web/` 前端 + `scripts/` 工具 + 测试 + 打包配置
+> 状态：**本报告为唯一权威 QA 文档**。自 2026-08-10 初版起，已历经多轮"质检→修复→结构优化→补测→功能增强→CI 加固→可观测性→前端安全→异步边界"，下述指标均为本轮实测终态。
+
+---
+
+## 0. 结论速览
+
+代码**成熟度偏高**，工程质量在同类 RAG 项目中属上游：分层清晰（engines 无 FastAPI 依赖、LLM 客户端下沉消除反向依赖）、降级链路完整（L0–L3）、预算感知超时、fail-closed 鉴权、Prometheus 指标齐全、多 worker 共享态可插拔、图谱重启不丢、QA 热路径全异步卸载、前端 XSS 防御闭合。
+
+**硬指标（实测终态）**
+- `ruff check`：**0 问题**（全工程文件）
+- `ruff format --check`：**0 差异**
+- `pytest`：**281/281 通过**（~38s）
+- 前端验证：`tests/test_frontend_safety.mjs`（node 直跑真实前端代码）：**14/14 断言通过**
+- 覆盖率：**82%**（TOTAL 3201 行，缺失 589 行），**已设 80% 门禁**（`pyproject [tool.coverage.report] fail_under=80` + `make test-ci`）
+- SQLite：**WAL 模式 + busy_timeout=5000**（`database is locked` 高并发加固）
+- 异步边界：QA 热路径与文档 CRUD 路由**全部 `asyncio.to_thread` 卸载**，无 event loop 阻塞
+
+**已闭环的真实短板**（旧报告 P0/P1/P2 早已全部修复，后续轮次进一步补齐）：生产就绪态、最易碎 IO/算法路径覆盖、语义护栏、持久化、CI 门禁、可观测性、前端安全、异步边界。
+
+---
+
+## 1. 验证方法与硬指标
+
+| 检查项 | 命令 | 结果 |
+|---|---|---|
+| 静态检查 | `ruff check .` | ✅ All checks passed |
+| 格式规范 | `ruff format --check .` | ✅ 全工程干净 |
+| 单元测试 | `pytest -q` | ✅ 281 passed, 1 warning（httpx 弃用提示，非项目问题） |
+| 前端安全验证 | `make test-frontend` | ✅ 14/14（XSS 转义 + SSE 坏块容错） |
+| 覆盖率 + 门禁 | `make test-ci` | ✅ 82% ≥ 80% 门禁通过 |
+| 并发加固 | `tests/test_wal_pytest.py`（8 线程并发写） | ✅ 无 database is locked |
+| 异步边界 | `tests/test_e2e_pytest.py`（HTTP 链路驱动文档/QA 路由） | ✅ 路由无 event loop 阻塞 |
+
+---
+
+## 2. 已落地优化清单（累计）
+
+### A. 生产就绪 / 健壮性
+- **A1 embedding 缓存 key 含 model_name**：换模型不再命中旧向量，避免静默召回错误。
+- **A2 GraphRAG 双向多跳**：`multi_hop(bidirectional=True)` 沿出/入边遍历，邻节点取"与起点相对的端点"，不丢关联。
+- **A3 启动安全自检**：`api_key_enabled`/`rate_limit_enabled` 为 False 时打印 WARNING（fail-open 提示）。
+- **A4 SQLite WAL + 忙等待**：`document_store._get_conn` 每连设置 `journal_mode=WAL`/`busy_timeout=5000`/`synchronous=NORMAL`，消除高并发 `database is locked`。
+- **A5 GraphStore 持久化**：`persist_path` pickle 落盘（与 BM25 同范式），重启不丢图；损坏 pickle 回退空图。
+- **A6 多 worker 共享态**：`shared_state.py` 可插拔 `CacheBackend`（内存默认 / Redis-ready）；QA 缓存与 slowapi 限流共享态统一接入，Redis 不可用自动回退内存。
+
+### B. 结构简化
+- **B1 路由规则配置与算法分离**：`routing_rules.py` 单一事实来源，支持 `RAG_ROUTING_RULES_FILE` / `RAG_ROUTE_THRESHOLD` / `RAG_LLM_TIMEOUT_S` / `RAG_FALLBACK_SKILL` 覆盖，非法回退内置并告警。
+- **B2 orchestrator 拆分**：纯函数 `_faithfulness`/`_calc_qa_metrics` 下沉 `qa_metrics.py`（1040→1004 行），可独立单测。
+
+### C. 算法 / 护栏
+- **C1 语义忠实度护栏强化**：`_faithfulness` 改为「词重合(主) + 可选 embedding 余弦(辅)」，同义改写不再被词重合误拒；弱语义不抬升；`embed_fn` 失败回退纯词重合。配置项 `fidelity_use_embedding` / `fidelity_threshold` 可标定。
+- **C2 RRF 单路/双路一致性修复**：`fusion._tag_rrf` 单路透传现与双路 `_feed` 一致跳过无 `chunk_id/id` 的文档，杜绝无标识文档泄漏到下游融合结果。
+
+### D. 测试覆盖补强（最易碎路径全部纳入防护）
+- **D1 OCR 96% / PDF 解析 91%**：全程 mock RapidOCR / pdfplumber，覆盖 dpi 降采样、逐页降级、原生/扫描检测、表格提取、行级分类。
+- **D2 RRF 融合 100%**：双路排序、重叠分数累加、空路透传、自定义 k、无 id 跳过、负 k 防御。
+- **D3 向量库 88% / 重排器 95%+**：insert 维度校验、filter 检索、get_by_ids、删除、`rerank` Bi/CE 双路径与 CE 异常降级。
+- **D4 端到端集成测试**：`test_e2e_pytest.py` 覆盖 上传→解析→分块→嵌入→入库→混合检索 全链路（HTTP + 直驱双形态，外部依赖全 mock）。
+- **D5 死参数治理**：`upload_document` 删除 `department`/`tags`/`access_level`（收了不落库，误导性契约），接口签名只留 `file`+`knowledge_base`。
+
+### E. 工程 hygiene
+- **E1 CI 门禁**：`pyproject [tool.coverage.report] fail_under=80` + `Makefile`（`make test` / `make test-ci` / `make lint` / `make test-frontend`）。
+- **E2 .gitignore**：补 `.coverage*`/`htmlcov/`/`*.db-wal`/`*.db-shm`。
+- **E3 注释漂移修正**：`config.py` CORS 默认说明、`main.py` 限流 Redis-ready 说明对齐现状。
+
+### F. 评估 / 阈值标定工具（解锁遗留项③）
+- **F1 `scripts/calibrate_fidelity.py`**（新增）：纯函数 `sweep_fidelity(cases)` 遍历 `fidelity_threshold` 取 F1 最大点（无模型/LLM 依赖），CLI 读 `labeled.json` 打印推荐阈值；平局取"最小能达最大 F1 的 t"（拒绝式护栏最宽松安全边界）。
+- **F2 度量数学锁进单测**：`tests/test_eval_tools_pytest.py`（6 测）固化 `_f1`/`_cosine`/`_extract_ragas_json`/`sweep_fidelity`，防评估数字静默失真。
+- **F3 契约校验**：`evaluate.py` / `calibrate_threshold.py` 对当前代码契约（`_retrieve_context` 的 `top1_score`、`/ask` 响应 `answer`+`sources[].content`、`RoutingResult` 字段）全部成立，无"脚本已对不上代码"隐患。
+
+### G. 可观测性闭环
+- **G1 质量指标上报**：`metrics.py` 新增 `rag_qa_faithfulness` / `rag_qa_top1_score` 两个 Histogram，运维可在 Grafana 画"回答质量劣化趋势"并设告警。
+- **G2 零依赖结构化日志**：`middleware/logging_middleware.py` 的 `JsonFormatter`（单行 JSON：ts/level/msg/trace_id + 结构化字段）+ `RequestLoggingMiddleware`（每请求 `trace_id`，记录 method/path/status/latency）+ `configure_json_logging()`。
+- **G3 orchestrator 埋点**：`_record_qa_quality(result)` 上报质量指标 + 结构化质量日志（faithfulness/top1_score/degradation/kb），`ask` 与 `ask_stream` 两路均埋。
+- **G4 测试**：`tests/test_observability_pytest.py`（4 测）覆盖质量指标暴露、helper、JSON formatter 携带 trace_id、中间件请求日志。
+
+### H. 前端安全 / 健壮性（web/index.html）
+- **H1 XSS 不对称修复**：`路由:${routingSource}` 补 `escapeHtml`（与同行 `skill` 一致）；全文件外部数据进 DOM 处均转义，答案正文用 `textContent`。
+- **H2 SSE 容错**：内联 `JSON.parse` 抽为纯函数 `parseSSEEvent(block)`（坏块返回 `null` 而非抛异常，主循环 `if (!ev) continue` 跳过继续），消除坏数据块崩掉整个流式会话。
+- **H3 验证**：`tests/test_frontend_safety.mjs`（node 直跑真实前端源码，14 断言）覆盖 XSS 免疫 + 合法/坏JSON/空data/截断块四类 SSE 行为。
+
+### I. 异步边界（async/sync 正确性）
+- **I1 文档路由卸载**：`documents.py` 8 处同步 `doc_store.*` 调用（`save`/`get`/`list_all`/`delete`/`update_status`）由 `async def` 内直接调用改为 `await asyncio.to_thread(...)`，消除 event loop 阻塞。
+- **I2 QA 热路径已正确**：`orchestrator.py` 所有阻塞调用（vector/bm25/rerank/graph/embed）与 `qa.py` 的 `log_qa` 写库均已 `await asyncio.to_thread`，无需改动。
+
+---
+
+## 3. 剩余风险与后续建议（需环境/流量/部署，非代码缺陷）
+
+1. **语义忠实度阈值定标（运维动作，已非代码阻塞）**：`fidelity_threshold=0.4` 为保守初值，需真实 QA 流量 + 人工标注坏样本，经 `scripts/calibrate_fidelity.py` 得出推荐值后写入 `config.fidelity_threshold`。代码侧已闭环。
+2. **残留根目录文件（低优先 hygiene）**：`milvus.db` / `rag-project` / `test_st.py` 等为旧项目副本或手动脚本，非当前工程所需，建议归档至 `archive/` 而非直接删除（避免误删历史数据）。
+3. **图谱跨进程共享**：GraphStore 当前 pickle 持久化覆盖单机重启；真正多实例共享需 Neo4j 级后端重写，按部署拓扑决定是否投入。
+4. **覆盖率 82% 的剩余缺口**：缺失集中在 `entity_extractor`（LLM 抽取，需真实模型）、`self_retrieval`（LLM 改写评估）、部分异常处理分支；属"需真实依赖/难构造"路径，继续追高性价比低，建议维持 80% 门禁自然防劣化。
+5. **静态类型检查（可选长期投入）**：当前有 ruff 无 mypy。无类型注解的存量代码上马 mypy 初期噪音大，仅建议在有长期类型纪律承诺时引入，非现阶段必做。
+6. **部署 / CI 流水线（取决于是否上线）**：`infrastructure/` 已有 `prometheus.yml`；Docker/compose/CI 仅在你确认部署目标后补齐，不应在缺部署目标时闷头做。
+
+---
+
+## 4. 运行方式
+
+```bash
+# 本地
+make test          # 跑全部 pytest
+make lint          # ruff 静态检查
+make format        # ruff 格式化
+make test-frontend # node 直跑前端安全验证（14 断言）
+
+# CI（带覆盖率门禁，低于 80% 失败）
+make test-ci
+
+# 直接起服务
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
