@@ -180,3 +180,28 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 - 起服务实测：`/auth/me` 返回 principal；`/admin` 200 且 deliver 控制台 HTML；`/documents` 含 `knowledge_base`；`/metrics` 仍可被抓取（183 条 `rag_` 指标）。
 - 提交：`fa04cd7`（7 文件，+391/−4）。
 
+## 全面质检循环（2026-08-18 凌晨 — 用户要求"多轮质检→优化→修bug→整理→整合提交"）
+
+### 基线（真实重测，非沿用记忆）
+- `pytest`：**323 passed**；`ruff check .`：**5 issues**（I001×3 + RUF100 + TRY004）；`ruff format --check .`：**127 文件干净**（历史 9 文件漂移此前已清零）。
+- 全工程扫描 `print/`/`except:/`/`TODO/`/`NotImplementedError`/`pdb`：仅 `scripts/` CLI 工具含合法 `print`（CLI 输出，非 API），无裸 except、无 TODO、无未实现桩 —— 工程卫生已达上游水准。
+
+### 逐轮优化与真实 bug 修复
+**第 1 轮 — lint 清零 + 1 个真实 RBAC 崩溃 bug**
+- ruff 自动修复 4 项（orchestrator.py/qa.py/test_rbac_pytest.py 的 I001 导入排序、calibration_collect.py 的 RUF100 冗余 noqa）。
+- `auth.py:53` TRY004：`raise ValueError("api_key_whitelist 必须是对象...")` → `TypeError`（类型错误应用 TypeError；无测试依赖该类型，安全）。
+- **真实 bug（HIGH）**：`document_store.list_all(kb_in=[])` 当 principal `allowed_kbs=[]`（认证但无权访问任何库）时，`if kb_in is not None` 把 `[]` 当成"有值"，构造 `WHERE knowledge_base IN (?)` 却**零参数** → `sqlite3.OperationalError` → 文档列表端点 **HTTP 500**；若朴素改成 `if kb_in:` 又会退化为返回**全部文档（信息泄漏）**。修复：`None`=全部 / `[]`=空集（直接返回空，不构造 IN()）/ 非空=过滤，三种语义严格区分。新增 `test_list_all_empty_kb_in_returns_empty_not_all`。
+
+**第 2 轮 — RBAC 空授权集一致性加固（defense-in-depth）**
+- 探查 `_candidate_kbs`：`if not allowed_kbs: return RAG_KBS` —— 把 `[]`（无访问）错误当成"全部知识库"；`_cross_kb_fallback` 用 `candidate_kbs or RAG_KBS` 同样把空集回退为全部。这与第 1 轮在 `list_all` 确立的"空=无访问"不变量直接矛盾，属潜在脆弱点（仅靠 ask 层显式 403 守卫兜底，未真正越权泄露，但语义自相矛盾）。
+- 修复：`_candidate_kbs` 明确 `None`=全部 / `[]`=空集 / 非空=过滤；`_cross_kb_fallback` 改用 `candidate_kbs if candidate_kbs is not None else RAG_KBS`（空集保持空集）。新增 `test_ask_raises_forbidden_on_empty_allowed_kbs`（空 allowed_kbs 必须 403，绝不退化为可查全部）。
+- 验证该路径确无泄露：`routing.kb=None`（直答技能）走 `_skill_direct` 不检索；KB 路由命中即被 `ask` 层 `routing.kb not in set(allowed_kbs=[])` 拦截 403 → 空集授权真实安全。
+
+### 实测口径（本轮后）
+- `pytest`：**325 passed**（323 + 2 新增 RBAC 回归）；`ruff check .`：**0 issues**；`ruff format .`：**127 文件已格式化（无变更）**。
+- 审计覆盖最高风险模块：shared_state（线程安全锁完备）、document_store（SQL 全参数化 + 空集修复）、qa_metrics（空向量/除零/None 全防护）、reranker（无除零、embed 批量索引配对正确）、orchestrator RBAC 路径、vector_store.get_by_ids（空 ids 早退）。
+- **诚实结论（达到自包含优化天花板）**：核心代码层已无可高价值自包含优化项。仅余外部条件项：③ fidelity 阈值真实流量标定、图谱跨进程共享（Neo4j 级）、可选 mypy 长期纪律。其余为低 ROI hygiene（残留根文件归档、外部依赖 mypy）。不再硬凑。
+
+### 整合提交
+- 全部改动（auth TRY004 + document_store 空集修复 + orchestrator RBAC 一致性 + 2 测试 + 本报告）作为**一次整合提交**落地（见 #39）。
+

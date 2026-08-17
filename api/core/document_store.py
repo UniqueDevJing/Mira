@@ -173,13 +173,17 @@ class DocumentStore:
         """
         offset = (page - 1) * size
         with self._get_conn() as conn:
-            if kb_in is not None:
-                placeholders = ",".join("?" for _ in kb_in) or "?"
-                where = f"WHERE knowledge_base IN ({placeholders})"
-                params = list(kb_in)
-            else:
+            if kb_in is None:
+                # None = 不限制 (admin / 未鉴权), 返回全部
                 where = ""
                 params = []
+            elif len(kb_in) == 0:
+                # [] = 明确无权访问任何知识库 (空 allowed_kbs 的 reader) → 直接返回空, 不构造 IN() 以免 SQL 参数缺失报错
+                return {"items": [], "total": 0}
+            else:
+                placeholders = ",".join("?" for _ in kb_in)
+                where = f"WHERE knowledge_base IN ({placeholders})"
+                params = list(kb_in)
             # 获取总数
             total = conn.execute(f"SELECT COUNT(*) FROM documents {where}", params).fetchone()[0]
 

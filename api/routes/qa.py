@@ -5,9 +5,8 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from fastapi import HTTPException
 
 from api.core.auth import KBForbiddenError, get_principal
 from api.core.document_store import get_document_store

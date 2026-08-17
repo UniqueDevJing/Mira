@@ -50,7 +50,7 @@ def _parse_whitelist(raw: str) -> dict[str, dict]:
     except json.JSONDecodeError as e:
         raise ValueError(f"api_key_whitelist 不是合法 JSON: {e}") from e
     if not isinstance(data, dict):
-        raise ValueError("api_key_whitelist 必须是对象 (key -> {name,kbs,role})")
+        raise TypeError("api_key_whitelist 必须是对象 (key -> {name,kbs,role})")
     return data
 
 

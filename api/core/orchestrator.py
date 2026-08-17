@@ -17,6 +17,7 @@ import logging
 import time
 
 from api.config import settings
+from api.core.auth import KBForbiddenError
 from api.core.llm_client import (
     CircuitBreakerOpenError,
     LLMClient,
@@ -49,7 +50,6 @@ from api.core.metrics import (
 from api.core.qa_cache import get_qa_cache
 from api.core.qa_metrics import _calc_qa_metrics, _faithfulness
 from api.core.session_store import load_session, save_session
-from api.core.auth import KBForbiddenError
 from api.schemas.qa import ChatTurn
 from api.state import get_bm25_index, get_embedder, get_reranker, get_vector_store
 from engines.embedding.embedder import EmbeddingService
@@ -125,9 +125,15 @@ RAG_KBS = [s["kb"] for s in SKILLS.values() if s["kb"]]  # ["service", "tech"]
 
 
 def _candidate_kbs(allowed_kbs: list[str] | None) -> list[str]:
-    """按 principal 授权范围收窄候选知识库; None = 不限制(全部)。"""
-    if not allowed_kbs:
+    """按 principal 授权范围收窄候选知识库。
+
+    None = 不限制(全部, admin/未鉴权); [] = 明确无权访问任何库(空集); 非空 = 受限子集。
+    语义须与 document_store.list_all 保持一致: [] 绝非"全部"。
+    """
+    if allowed_kbs is None:
         return RAG_KBS
+    if not allowed_kbs:
+        return []
     allowed = set(allowed_kbs)
     return [k for k in RAG_KBS if k in allowed]
 
@@ -1152,7 +1158,9 @@ async def _cross_kb_fallback(
     返回 (merged_docs, 命中的库列表)。兜底结果随后参与统一 Rerank。
     candidate_kbs: RBAC 授权范围, 仅在该范围内跨库; None=全部。
     """
-    siblings = [k for k in (candidate_kbs or RAG_KBS) if k != current_kb]
+    # None=全部(RBAC 未限制); []=明确无权访问任何库 → 空集, 不可回退为全部(否则越权)
+    scope = candidate_kbs if candidate_kbs is not None else RAG_KBS
+    siblings = [k for k in scope if k != current_kb]
     # 跳过空库（BM25 无文档 → 向量大概率也空, 省预算）
     non_empty = [k for k in siblings if len(get_bm25_index(k)) > 0]
     if not non_empty:

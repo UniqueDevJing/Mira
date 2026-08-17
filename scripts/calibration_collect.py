@@ -22,7 +22,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from calibrate_fidelity import sweep_fidelity  # noqa: E402
+from calibrate_fidelity import sweep_fidelity
 
 
 def run_export(db: str, out: str, labeled: str) -> None:

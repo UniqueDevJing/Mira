@@ -14,7 +14,6 @@ from api.core import auth as auth_mod
 from api.core.auth import KBForbiddenError, Principal
 from api.core.orchestrator import _candidate_kbs
 
-
 # ───────────────────────── 单元: 白名单解析 ─────────────────────────
 
 
@@ -94,6 +93,25 @@ def test_ask_raises_forbidden_on_disallowed_kb(monkeypatch):
     asyncio.run(_go())
 
 
+def test_ask_raises_forbidden_on_empty_allowed_kbs(monkeypatch):
+    import api.core.orchestrator as oc
+
+    async def _fake_route(q, skill, llm, start, candidate_kbs=None):
+        from engines.router.intent_router import RoutingResult
+
+        return RoutingResult("tech", "tech", 1.0, "manual"), 1.0
+
+    async def _go():
+        monkeypatch.setattr(oc, "_route", _fake_route)
+        monkeypatch.setattr(oc, "load_session", lambda sid: [])
+        monkeypatch.setattr(oc, "save_session", lambda *a, **k: None)
+        # 空 allowed_kbs = 无权访问任何库, 必须 403, 绝不能退化为可查全部
+        with pytest.raises(KBForbiddenError):
+            await oc.ask("hi", allowed_kbs=[])
+
+    asyncio.run(_go())
+
+
 # ───────────────────────── 单元: list_all(kb_in) 过滤 ─────────────────────────
 
 
@@ -107,6 +125,20 @@ def test_list_all_kb_in_filter(tmp_path):
     svc = ds.list_all(kb_in=["service"])
     assert svc["total"] == 1 and svc["items"][0]["doc_id"] == "1"
     assert ds.list_all(kb_in=["nope"])["total"] == 0
+
+
+def test_list_all_empty_kb_in_returns_empty_not_all(tmp_path):
+    from api.core.document_store import DocumentStore
+
+    ds = DocumentStore(db_path=str(tmp_path / "d.db"))
+    ds.save("1", "a.txt", status="ready", knowledge_base="service")
+    ds.save("2", "b.txt", status="ready", knowledge_base="tech")
+    # [] = 无权访问任何库 (空 allowed_kbs 的 reader) → 必须返回空,
+    # 既不能抛 SQL 参数缺失错误, 也不能退化为返回全部 (信息泄漏)
+    res = ds.list_all(kb_in=[])
+    assert res["total"] == 0 and res["items"] == []
+    # None = 不限制 → 返回全部
+    assert ds.list_all(kb_in=None)["total"] == 2
 
 
 # ───────────────────────── 集成: 中间件 + 路由层 RBAC ─────────────────────────
