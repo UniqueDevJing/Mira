@@ -150,3 +150,33 @@ make test-ci
 # 直接起服务
 uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
+
+---
+
+## 5. 管理后台（③ 前端/控制台，2026-08-17 本轮）
+
+在 RBAC（②）与可观测性（①）之后补齐「用户感知最强」的一环：运营人员可不经 API 即可自助查看身份权限、管理文档、观测质量。
+
+**后端**
+- `GET /api/v1/auth/me`（`api/routes/auth.py`，挂载 `api.main`）：返回当前主体 `{key_id, name, role, allowed_kbs, is_admin}`，供控制台展示权限边界。
+- `DocumentListItem` 新增 `knowledge_base` 字段并在 `GET /api/v1/documents` 填充（来自 `document_store.list_all` 的 `SELECT *`），前端可按库分组/筛选。
+- `GET /admin` 交付 `web/admin.html` 静态控制台。
+
+**安全中间件豁免**（修复①可观测性在生产栈的实际断点）
+- `EXEMPT_PATHS` 增加 `/admin`、`/metrics`：
+  - `/admin` 仅交付静态 HTML；其内数据接口（auth/me、documents、metrics）仍走 `X-API-Key` 鉴权。
+  - `/metrics` 供**同栈 Prometheus 跨容器抓取**——原非 loopback 客户端会被 fail-closed 拒绝导致 Grafana 面板全空，豁免后部署态可真正观测（内部监控标准做法）。
+
+**前端 `web/admin.html`（复用 index 设计规范与 `escapeHtml`/`authHeaders`/`API` 约定）**
+- 身份权限卡片（`/auth/me` + 可选 `X-API-Key` 持久化）。
+- 文档上传（拖拽 + KB 选择 + 完成后状态轮询，直到无 `processing`）。
+- 文档列表（KB 徽标 + 状态点 + 删除，事件委托绑定避免 XSS）。
+- 质量指标条：前端解析 Prometheus `/metrics` 文本，计算平均忠实度/Top1、已评估问答数、降级层级分布，每 15s 刷新。
+- `index.html` 导航新增「管理后台」入口。
+
+**质检闭环（本轮实测）**
+- `ruff check`：变更文件全清（`security.py` 顺带修复预存 I001 导入排序）。
+- `pytest`：**323/323 通过**（无回归）。
+- 起服务实测：`/auth/me` 返回 principal；`/admin` 200 且 deliver 控制台 HTML；`/documents` 含 `knowledge_base`；`/metrics` 仍可被抓取（183 条 `rag_` 指标）。
+- 提交：`fa04cd7`（7 文件，+391/−4）。
+
