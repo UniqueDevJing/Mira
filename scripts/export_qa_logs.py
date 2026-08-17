@@ -41,9 +41,7 @@ def _faithfulness(answer: str, contexts: list[str]) -> float:
     return round(len(ans_tokens & ctx_tokens) / len(ans_tokens), 4)
 
 
-def export_qa_logs(
-    db_path: str, out_path: str, labeled_path: str | None, limit: int | None, since: str | None
-) -> dict:
+def export_qa_logs(db_path: str, out_path: str, labeled_path: str | None, limit: int | None, since: str | None) -> dict:
     """导出 qa_logs 为 JSON。返回统计 {count, out, labeled}。"""
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"找不到数据库: {db_path}")

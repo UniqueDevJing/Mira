@@ -39,7 +39,10 @@ class QARequest(BaseModel):
                 "mode": "hybrid",
                 "enable_self_retrieval": False,
                 "top_k": 10,
-                "history": [{"role": "user", "content": "退款多久到账"}, {"role": "assistant", "content": "一般一到三个工作日到账"}],
+                "history": [
+                    {"role": "user", "content": "退款多久到账"},
+                    {"role": "assistant", "content": "一般一到三个工作日到账"},
+                ],
             }
         }
     }

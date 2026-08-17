@@ -41,8 +41,14 @@ def test_log_qa_stores_sources_and_full_answer(tmp_path):
 def test_export_writes_both_artifacts(tmp_path):
     db = str(tmp_path / "documents.db")
     store = DocumentStore(db)
-    store.log_qa("q1", "北京今天晴", skill="weather", kb_id="kb1", routing_source="rule",
-                 sources=[{"content": "北京天气晴转多云"}, {"content": "下午有风"}])
+    store.log_qa(
+        "q1",
+        "北京今天晴",
+        skill="weather",
+        kb_id="kb1",
+        routing_source="rule",
+        sources=[{"content": "北京天气晴转多云"}, {"content": "下午有风"}],
+    )
     store.log_qa("q2", "支持退款", kb_id="kb2", sources=[{"content": "7天无理由退款"}])
 
     out = tmp_path / "qa_export.json"

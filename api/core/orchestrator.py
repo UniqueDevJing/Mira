@@ -152,6 +152,7 @@ def _direct_messages(question: str, history=None) -> list[dict]:
         + [{"role": "user", "content": f"直接简洁回答用户问题：{question}"}]
     )
 
+
 # Embedding 缓存命中统计上报（增量方式写入 Prometheus Counter）
 _cache_stats_last = {"hits": 0, "misses": 0}
 
@@ -211,7 +212,9 @@ async def ask(
     if routing.skill == "direct":
         result = await _skill_direct(question, llm, routing, start, temperature, history)
     else:
-        result = await _skill_rag(question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history)
+        result = await _skill_rag(
+            question, routing, llm, top_k, start, enable_self_retrieval, temperature, mode, history
+        )
 
     # 先组装完整 result (router_ms/qa_metrics) 再写缓存 — 原 cache.set 在 qa_metrics 计算前执行,
     # 缓存条目永久缺 qa_metrics, 命中路径与 miss 路径契约不一致
@@ -877,7 +880,13 @@ async def _stream_rag(
 
 
 async def _stream_direct(
-    question: str, llm, routing: RoutingResult, start: float, router_ms: float = 0.0, temperature: float = 0.1, history=None
+    question: str,
+    llm,
+    routing: RoutingResult,
+    start: float,
+    router_ms: float = 0.0,
+    temperature: float = 0.1,
+    history=None,
 ):
     """流式直接回答 Skill: 仅 LLM, 无检索。"""
     gen, r = _run_stream_llm(
@@ -927,7 +936,12 @@ async def _stream_direct(
 
 
 async def _skill_direct(
-    question: str, llm: "LLMClient | SyncLLMClient", routing: RoutingResult, start: float, temperature: float = 0.1, history=None
+    question: str,
+    llm: "LLMClient | SyncLLMClient",
+    routing: RoutingResult,
+    start: float,
+    temperature: float = 0.1,
+    history=None,
 ) -> dict:
     t0 = time.time()
     try:

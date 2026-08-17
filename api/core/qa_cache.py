@@ -27,7 +27,12 @@ class QACache:
         history=None,
     ) -> str:
         """缓存键: 完整输入指纹。temperature/mode/history 计入, 尊重用户参数, 代价是缓存分片。"""
-        hist = [(getattr(t, "role", None), getattr(t, "content", None)) if not isinstance(t, dict) else (t.get("role"), t.get("content")) for t in (history or [])]
+        hist = [
+            (getattr(t, "role", None), getattr(t, "content", None))
+            if not isinstance(t, dict)
+            else (t.get("role"), t.get("content"))
+            for t in (history or [])
+        ]
         raw = json.dumps(
             [question, skill, top_k, enable_self_retrieval, temperature, mode, hist], ensure_ascii=False, sort_keys=True
         )

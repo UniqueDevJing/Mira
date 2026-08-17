@@ -335,8 +335,13 @@ LLM 失败/超时/熔断    → 默认 tech 库 (source=fallback, 绝不中断)
 
 ```python
 # 日志中需要增加的字段
-logger.info("LLM 调用完成: model=%s, tokens_in=%d, tokens_out=%d, latency=%sms",
-            self.model, usage.prompt_tokens, usage.completion_tokens, elapsed_ms)
+logger.info(
+    "LLM 调用完成: model=%s, tokens_in=%d, tokens_out=%d, latency=%sms",
+    self.model,
+    usage.prompt_tokens,
+    usage.completion_tokens,
+    elapsed_ms,
+)
 ```
 
 ### P1 — 上线前建议完成

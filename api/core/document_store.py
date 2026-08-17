@@ -143,7 +143,17 @@ class DocumentStore:
                     """INSERT INTO qa_logs
                        (question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources_json),
+                    (
+                        question,
+                        answer,
+                        skill,
+                        kb_id,
+                        routing_source,
+                        degradation_level,
+                        latency_ms,
+                        tokens_total,
+                        sources_json,
+                    ),
                 )
         except sqlite3.Error as e:
             logger.warning("QA 日志写入失败: %s", str(e)[:120])

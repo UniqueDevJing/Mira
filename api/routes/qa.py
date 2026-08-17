@@ -161,7 +161,9 @@ async def ask_question_stream(req: QARequest):
 _bg_tasks: set[asyncio.Task] = set()
 
 
-def _log_qa_async(question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources=None):
+def _log_qa_async(
+    question, answer, skill, kb_id, routing_source, degradation_level, latency_ms, tokens_total, sources=None
+):
     """异步写 QA 日志（fire-and-forget，不阻塞响应）。"""
 
     def _write():
