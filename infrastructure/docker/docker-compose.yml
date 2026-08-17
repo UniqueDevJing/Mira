@@ -1,0 +1,62 @@
+# RAG 2.0 部署栈: API + Prometheus + Grafana(质量可观测)
+# 用法(在 infrastructure/docker/ 目录):
+#   docker compose up -d --build      # 首次/改代码后重建
+#   docker compose ps                  # 查看状态
+#   docker compose down                # 停止
+#
+# 访问:
+#   API        http://localhost:8000      (/health, /metrics, /docs)
+#   Prometheus http://localhost:9090
+#   Grafana    http://localhost:3000      (admin/admin, 已预置数据源+面板)
+#
+# 环境变量(放 infrastructure/docker/.env 或 shell 导出):
+#   RAG_LLM_API_KEY        必填, 真实问答需要的 LLM Key
+#   RAG_API_KEY_ENABLED    默认 true (开启 API Key 鉴权)
+#   RAG_API_KEY_WHITELIST  可选, KB 级 RBAC 白名单 JSON
+#   RAG_SHARED_STATE_BACKEND  memory(默认, 单实例) / redis(多实例会话一致)
+#   GRAFANA_USER / GRAFANA_PASSWORD 默认 admin/admin, 生产务必改
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    container_name: rag-2.0-api
+    environment:
+      - RAG_LLM_API_KEY=${RAG_LLM_API_KEY:-}
+      - TRANSFORMERS_OFFLINE=1
+      - HF_HUB_OFFLINE=1
+      - HF_HOME=/app/.cache/huggingface
+      - RAG_SHARED_STATE_BACKEND=${RAG_SHARED_STATE_BACKEND:-memory}
+      - RAG_API_KEY_ENABLED=${RAG_API_KEY_ENABLED:-true}
+      - RAG_API_KEY_WHITELIST=${RAG_API_KEY_WHITELIST:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../data:/app/data
+      - ../../lancedb_data:/app/lancedb_data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rag-2.0-prometheus
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rag-2.0-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/grafana-dashboard.json:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped

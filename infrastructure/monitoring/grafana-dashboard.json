@@ -169,6 +169,72 @@
             "legendFormat": "{{error_type}}"
           }
         ]
+      },
+      {
+        "id": 10,
+        "title": "回答忠实度分布 (P50 / P95)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(rag_qa_faithfulness_bucket[5m])) by (le))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(rag_qa_faithfulness_bucket[5m])) by (le))",
+            "legendFormat": "P95"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "custom": {"lineWidth": 2}
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Top1 检索得分分布 (P50 / P95)",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(rag_qa_top1_score_bucket[5m])) by (le))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(rag_qa_top1_score_bucket[5m])) by (le))",
+            "legendFormat": "P95"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "custom": {"lineWidth": 2}
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "降级层级分布 (按 level 0/1/2/3)",
+        "type": "bargauge",
+        "gridPos": {"x": 0, "y": 22, "w": 24, "h": 5},
+        "targets": [
+          {
+            "expr": "sum(rate(rag_degradation_levels_total[5m])) by (level)",
+            "legendFormat": "level {{level}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops/s",
+            "custom": {"fillOpacity": 80, "stacking": {"mode": "none"}}
+          }
+        }
       }
     ],
     "schemaVersion": 39,
