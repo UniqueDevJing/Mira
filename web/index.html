@@ -732,7 +732,7 @@ async function askQuestion() {
     const reader = r.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
-    let skill = '', routingSource = '', degLevel = 0, latencyMs = 0;
+    let skill = '', routingSource = '', degLevel = 0, latencyMs = 0, sourcesCount = 0;
 
     while (true) {
       const {done, value} = await reader.read();
@@ -752,7 +752,9 @@ async function askQuestion() {
           ansText.textContent += ev.content;
           chat.scrollTop = chat.scrollHeight;
         } else if (ev.type === 'sources') {
-          sp.innerHTML = ev.sources.map(s => `
+          const srcs = ev.sources || [];
+          sourcesCount = srcs.length;
+          sp.innerHTML = srcs.map(s => `
             <div class="source-item">
               <span class="source-score">[${Number(s.score||0).toFixed(3)}]</span>
               <span class="source-chunk">Chunk: ${escapeHtml((s.chunk_id||'').slice(-8))}</span>
@@ -770,7 +772,7 @@ async function askQuestion() {
           const skillTag = skill ? `<span class="chip chip-info">${skillMap[skill] || escapeHtml(skill)}</span>` : '';
           const routeTag = routingSource ? `<span style="color:var(--text-3)">路由:${escapeHtml(routingSource)}</span>` : '';
           const degTag = degLevel > 0 ? `<span class="chip chip-warn">降级L${degLevel}</span>` : '';
-          ansMeta.innerHTML = `${skillTag} ${routeTag} ${degTag} ${Math.round(latencyMs)}ms · ${(ev.sources||[]).length} 来源`;
+          ansMeta.innerHTML = `${skillTag} ${routeTag} ${degTag} ${Math.round(latencyMs)}ms · ${sourcesCount} 来源`;
           renderMetrics(ansMetrics, ev.qa_metrics);
           renderSteps(ansSteps, ev.latency_breakdown, ev.retrieval_meta, ev.degradation_level);
         }

@@ -14,6 +14,8 @@ data/labeled_review.md
 # 生产 QA 日志导出 (含真实问题与答案, 不入库)
 data/qa_export.json
 data/labeled_production.json
+data/labeled_demo.json
+*.log
 *.egg-info/
 dist/
 *.pdf
