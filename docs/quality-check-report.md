@@ -13,7 +13,7 @@
 **硬指标（实测终态，2026-08-17 末轮）**
 - `ruff check`：**0 问题**（全工程文件）
 - `ruff format --check`：**9 文件存量格式漂移**（预存，与本次无关；无损 `ruff format` 即可清零，见剩余风险#7）
-- `pytest`：**299/299 通过**（~33s，含多轮对话 7 测 + 缓存桩回归修复）
+- `pytest`：**323/323 通过**（~39s，含多轮对话 7 测 + 服务端会话 9 测 + KB 级 RBAC 15 测 + 缓存桩回归修复）
 - 前端验证：`tests/test_frontend_safety.mjs`（node 直跑真实前端代码）：**14/14 断言通过**
 - 覆盖率：**82%+（≥80% 门禁通过）**（`pyproject [tool.coverage.report] fail_under=80` + `make test-ci`）
 - SQLite：**WAL 模式 + busy_timeout=5000**（`database is locked` 高并发加固）
@@ -46,7 +46,7 @@
 |---|---|---|
 | 基础版 | 基础 RAG 检索问答 | ✅ 早已具备（混合检索 RRF+重排、来源引用） |
 | 进阶版 | 检索质量增强 / 评估 | ✅ 具备（OCR/PDF 解析、RRF 一致性、语义护栏、自动化评测闭环 F1-F5、82% 覆盖） |
-| 生产级 | 多轮对话 / 细粒度权限 / 可观测 / 部署 | ✅ **多轮对话已补齐（本轮）**；可观测 G1-G4、WAL、多 worker 共享态、CI 门禁均已具备；**仅余文档级 RBAC（用户暂缓）** |
+| 生产级 | 多轮对话 / 细粒度权限 / 可观测 / 部署 | ✅ **多轮对话已补齐（客户端 history 透传 + 服务端 session_id 持久化双轨）**；**KB 级 RBAC + 多 API Key 白名单已落地**；可观测 G1-G4、WAL、多 worker 共享态、CI 门禁均已具备 |
 | 行业级 | 多模态检索 / 跨实例图谱 / 大规模权限治理 | ◐ 部分具备：GraphRAG 双向多跳+持久化、评估闭环、Prometheus；**多模态检索、Neo4j 级跨进程图谱、文档级权限待做** |
 
 **结论**：项目**已超越进阶版、达到生产级主体**（多轮对话补齐后，生产级清单仅差细粒度文档权限，且用户已明确暂缓）。行业级处于"核心能力就位、外延能力待扩展"状态。
@@ -103,13 +103,22 @@
 - **I1 文档路由卸载**：`documents.py` 8 处同步 `doc_store.*` 调用（`save`/`get`/`list_all`/`delete`/`update_status`）由 `async def` 内直接调用改为 `await asyncio.to_thread(...)`，消除 event loop 阻塞。
 - **I2 QA 热路径已正确**：`orchestrator.py` 所有阻塞调用（vector/bm25/rerank/graph/embed）与 `qa.py` 的 `log_qa` 写库均已 `await asyncio.to_thread`，无需改动。
 
-### J. 多轮对话（生产级关键补齐）
+### J. 多轮对话（生产级关键补齐，双轨）
 - **J1 协议**：`QARequest.history: list[ChatTurn]`（`ChatTurn` = `{role: user|assistant, content}`，pydantic 校验），客户端维护、服务端无状态透传；最多取最近 20 轮（`_history_to_messages` 截断 + 角色过滤）。
 - **J2 上下文装配**：`_chat_messages` / `_direct_messages` 将 `system + history + context/question` 组装为 LLM 消息；`ask`/`ask_stream` 及 RAG/直答/技能三路径全部透传 `history`。
 - **J3 缓存防串味**：`qa_cache.make_key` 指纹纳入 `history`，不同历史不会命中彼此缓存。
 - **J4 前端**：`web/index.html` 维护 `chatHistory`，每轮推送 `user` 并在 `done` 事件落 `assistant`，发请求时带 `history`（不含当前轮）；新增「清空对话」按钮。
 - **J5 验证**：`tests/test_multiturn_pytest.py`（7 测）单测 `_history_to_messages` + 集成测 `ask`/`ask_stream` 历史确进入 LLM 消息；`tests/test_qa_cache_pytest.py` 桩补 `history` 参数（回归修复）。
 - **J6 真机验证**：启服务后两轮对话探针——Q2「它旗下的产品线有哪些？」**无 history** 时模型回答"未提及『它』指代对象，无法回答"；**带 history** 时正确绑定 Q1 中的「云栖智能」并据此作答。指代消解确实依赖历史上下文，多轮闭环成立。
+- **J7 服务端会话持久化（双轨之一，`api/core/session_store.py`）**：新增 `session_id` 入参，`ask`/`ask_stream` 在每轮后 `save_session`（20 轮上限、1800s TTL、key 前缀 `rag:session:`），`GET/DELETE /session/{id}` 暴露读取/清除；复用 `shared_state.get_cache_backend()` 单例（内存默认 / Redis-ready），与 QA 缓存同源。**缓存命中早期返回路径也补 `save_session`**（旧版漏落盘，首轮偶发丢失）。`tests/test_session_pytest.py`（9 测）覆盖服务端多轮驱动、跨 id 隔离、缓存命中仍落盘、轮次上限截断。**注意**：`InMemoryBackend` 为进程内单例，多 worker（`--workers N`）下各进程独立后端 → 服务端会话需 `RAG_SHARED_STATE_BACKEND=redis` 才跨进程一致；单进程部署无此问题。
+
+### K. KB 级 RBAC + 多 API Key 白名单（生产级最后一环，已落地 `api/core/auth.py`）
+- **K1 多 Key 白名单（`RAG_API_KEY_WHITELIST` JSON 或 `settings.api_key_whitelist`）**：映射 `"<key>": {"name", "kbs": "*"|null|[...], "role": "admin"|"reader"}`；兼容旧单 Key `RAG_API_KEY`（视为 admin）。`load_api_keys()` 解析 + `get_api_keys()` memoized；`authenticate(provided)` 用 `secrets.compare_digest` 常量时间比较（防时序攻击）。
+- **K2 Principal 模型**：`Principal(key_id, name, role, allowed_kbs)`，`allowed_kbs=None` 表示全部、`[]` 表示无、`[...]` 表示子集；`can_access_kb(kb)` 据此判定。admin 免所有 KB 限制。
+- **K3 中间件注入（`api/middleware/security.py`）**：`APIKeyMiddleware` 失败关闭（无 Key/坏 Key → 403，不再 fail-open）；本机 loopback / 豁免路径注入 `loopback_principal()`，鉴权关闭时注入 `anonymous_admin()`；成功则 `request.state.principal = principal`。
+- **K4 路由层 KB 级 403**：`qa.py` 取 `principal = get_principal(request)`；若 `req.skill` 指向的 KB 不在 `allowed_kbs` → 403；`ask`/`ask_stream` 把 `allowed_kbs` 透传给 `orchestrate`，捕获 `KBForbiddenError` → 403（流式路径 yield 错误 SSE 事件）。`documents.py` 上传/列举/状态/删除均按 `principal.allowed_kbs` 做 403（列举走 `DocumentStore.list_all(kb_in=...)` 服务端过滤）。
+- **K5 编排层收窄 + 兜底**：`orchestrator._candidate_kbs(allowed_kbs)` 把候选 KB 收窄到授权子集；`_route` 若手动技能指向未授权 KB 则回落 LLM 自动路由；路由结果若落在未授权 KB → 抛 `KBForbiddenError`。`allowed_kbs` 经 `_route`→`_skill_rag`→`_retrieve_context`→`_cross_kb_fallback`→`_stream_rag` 全链路透传。
+- **K6 验证**：`tests/test_rbac_pytest.py`（15 测）覆盖白名单解析 / 旧 Key 兼容 / `authenticate` / `Principal.can_access_kb` / `_candidate_kbs` / `ask` 抛 `KBForbiddenError` / `list_all(kb_in)` 过滤；集成（`TestClient` + `RAG_API_KEY_ENABLED=true`，admin / reader_svc 两 Key）覆盖 401 无 Key、403 坏 Key、200 admin、200 reader+service 技能、403 reader+tech 技能、403 reader 上传 tech KB、200 admin 上传 service KB。
 
 ---
 
@@ -121,7 +130,7 @@
 4. **覆盖率 82% 的剩余缺口**：缺失集中在 `entity_extractor`（LLM 抽取，需真实模型）、`self_retrieval`（LLM 改写评估）、部分异常处理分支；属"需真实依赖/难构造"路径，继续追高性价比低，建议维持 80% 门禁自然防劣化。
 5. **静态类型检查（可选长期投入）**：当前有 ruff 无 mypy。无类型注解的存量代码上马 mypy 初期噪音大，仅建议在有长期类型纪律承诺时引入，非现阶段必做。
 6. **部署流水线（取决于是否上线）**：`infrastructure/` 已有 `prometheus.yml` / `Dockerfile` / compose；Docker 构建与多实例拓扑按部署目标决定。但 **CI 已落地并真正执行 80% 覆盖率门禁**（`.github/workflows/ci.yml` 经 `pip install -e ".[dev]"` 带入 pytest-cov + `make test-ci`），作为代码质量硬防护，与是否上线解耦，无需等待部署决策。
-7. **文档级 RBAC（生产级最后一环，用户已暂缓）**：当前鉴权为全局 API Key（fail-closed）。细粒度「文档/知识库级权限」未实现，属生产级清单中唯一未闭合项；用户明确暂缓，API 契约已预留 `access_level`（D5 清理的是上传侧死参数，读取侧权限仍待做）。
+7. **KB 级 RBAC（已落地，见 §K）**：原「文档/知识库级权限」未实现项已于本轮补齐——多 API Key 白名单 + `Principal.allowed_kbs` 子集授权 + 中间件 fail-closed + 路由层 403 + 编排层候选 KB 收窄/兜底。生产级清单中权限一环已闭合。后续如需**文档级**（单知识库内按文档粒度）权限，属行业级外延，按需求再投入。
 8. **`ruff format` 存量漂移（9 文件，无损可清）**：`document_store.py` 等 9 个预存文件存在格式差异，与多轮对话无关；运行 `ruff format` 即可零风险清零，不影响逻辑与测试。
 
 ---
