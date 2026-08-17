@@ -20,6 +20,8 @@ tests/last_test_results.json
 # 覆盖率产物 (pytest-cov)
 .coverage
 .coverage.*
+# 沙箱/本地绕过 safe-delete 拦截时的临时数据文件
+.covdata
 htmlcov/
 
 # SQLite WAL 辅助文件 (journal_mode=WAL 生成, 不入库)

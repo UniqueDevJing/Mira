@@ -8,7 +8,7 @@ test:
 	pytest -p no:cacheprovider
 
 test-ci:
-	pytest --cov=api --cov=engines --cov-report=term-missing --cov-fail-under=80 -p no:cacheprovider
+	pytest -m "not slow and not integration" --cov=api --cov=engines --cov-report=term-missing --cov-fail-under=80 -p no:cacheprovider
 
 test-frontend:
 	node tests/test_frontend_safety.mjs

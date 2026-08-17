@@ -96,7 +96,7 @@
 3. **图谱跨进程共享**：GraphStore 当前 pickle 持久化覆盖单机重启；真正多实例共享需 Neo4j 级后端重写，按部署拓扑决定是否投入。
 4. **覆盖率 82% 的剩余缺口**：缺失集中在 `entity_extractor`（LLM 抽取，需真实模型）、`self_retrieval`（LLM 改写评估）、部分异常处理分支；属"需真实依赖/难构造"路径，继续追高性价比低，建议维持 80% 门禁自然防劣化。
 5. **静态类型检查（可选长期投入）**：当前有 ruff 无 mypy。无类型注解的存量代码上马 mypy 初期噪音大，仅建议在有长期类型纪律承诺时引入，非现阶段必做。
-6. **部署 / CI 流水线（取决于是否上线）**：`infrastructure/` 已有 `prometheus.yml`；Docker/compose/CI 仅在你确认部署目标后补齐，不应在缺部署目标时闷头做。
+6. **部署流水线（取决于是否上线）**：`infrastructure/` 已有 `prometheus.yml` / `Dockerfile` / compose；Docker 构建与多实例拓扑按部署目标决定。但 **CI 已落地并真正执行 80% 覆盖率门禁**（`.github/workflows/ci.yml` 经 `pip install -e ".[dev]"` 带入 pytest-cov + `make test-ci`），作为代码质量硬防护，与是否上线解耦，无需等待部署决策。
 
 ---
 
