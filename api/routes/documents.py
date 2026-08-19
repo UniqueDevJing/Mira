@@ -17,7 +17,7 @@ from api.schemas.documents import (
     DocumentStatusResponse,
     DocumentUploadResponse,
 )
-from api.state import get_bm25_index, get_vector_store
+from api.state import get_bm25_index, get_embedder, get_vector_store
 from engines.parsing.registry import SUPPORTED_MIME, get_parser
 
 logger = logging.getLogger(__name__)
@@ -185,7 +185,6 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: s
 
     from api.config import settings
     from engines.chunking.structure_chunker import StructureChunker
-    from engines.embedding.embedder import EmbeddingService
     from engines.parsing.registry import get_parser
 
     tmp_path = None
@@ -213,7 +212,7 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: s
         if not chunks:
             return {"pages": len(uir.pages), "chunks": 0}
 
-        embedder = EmbeddingService(model_name=settings.embedding_model, device=settings.embedding_device)
+        embedder = get_embedder()  # 全局单例: 与 orchestrator 同路径, 避免每上传重复建实例/加载模型
         texts = [c.content for c in chunks]
         embeddings = embedder.embed_batch(texts)
         for chunk, emb in zip(chunks, embeddings):

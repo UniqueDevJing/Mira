@@ -94,11 +94,23 @@ def get_graph_rag(kb: str = "documents") -> GraphRAGRetriever:
         with _graph_lock:
             if kb not in _graph_map:
                 entity_ext, rel_ext = _shared_extractors()
-                # 图谱持久化到 data/graph_<kb>.pkl, 重启恢复 (与 BM25 对称); GraphStore 内部损坏回退空图
+                from api.config import settings
+
+                # 图谱持久化到 data/graph_<kb>.pkl, 重启恢复 (与 BM25 对称); GraphStore 内部损坏回退空图。
+                # redis_url 配置时整图写入 Redis, 多 worker 共享同一份 (省重复 LLM 抽取 + 图谱一致);
+                # 未配置/ Redis 不可达 → GraphStore 自动回退内存/文件, 不阻断启动。
                 _evict_oldest(
                     _graph_map,
                     kb,
-                    GraphRAGRetriever(entity_ext, rel_ext, GraphStore(persist_path=str(_DATA_DIR / f"graph_{kb}.pkl"))),
+                    GraphRAGRetriever(
+                        entity_ext,
+                        rel_ext,
+                        GraphStore(
+                            persist_path=str(_DATA_DIR / f"graph_{kb}.pkl"),
+                            redis_url=settings.redis_url or None,
+                            redis_key=f"rag:graph:{kb}",
+                        ),
+                    ),
                 )
     return _graph_map[kb]
 

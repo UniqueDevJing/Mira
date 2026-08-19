@@ -71,9 +71,12 @@ def main() -> None:
         print("无标注数据")
         return
     res = sweep_fidelity(cases)
+    t = res["best_threshold"]
     print(f"样本数: {len(cases)}")
-    print(f"推荐 fidelity_threshold = {res['best_threshold']} (F1={res['best_f1']:.3f})")
-    print("当前 config 默认 0.40 — 若推荐值偏离较大, 更新 api/config.py 的 fidelity_threshold")
+    print(f"推荐 fidelity_threshold = {t} (F1={res['best_f1']:.3f})")
+    print("当前 config 默认 0.40。应用推荐值无需改码 — 设置环境变量即可生效:")
+    print(f"  Linux/macOS: export RAG_FIDELITY_THRESHOLD={t}")
+    print(f'  Windows:     $env:RAG_FIDELITY_THRESHOLD="{t}"')
 
 
 if __name__ == "__main__":

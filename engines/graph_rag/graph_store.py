@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class GraphStore(GraphStoreInterface):
-    def __init__(self, persist_path: str | None = None):
+    def __init__(
+        self,
+        persist_path: str | None = None,
+        redis_url: str | None = None,
+        redis_key: str | None = None,
+    ):
         self.nodes: dict[str, dict] = {}  # {name: {type, aliases, chunks, properties}}
         self.edges: list[dict] = []  # [{subject, predicate, object, chunk_id}]
         self.adj_out = defaultdict(list)  # {subject: [(object, predicate)]}
@@ -28,29 +33,52 @@ class GraphStore(GraphStoreInterface):
         # "dictionary changed size during iteration" (nodes/adj_* 迭代时被改)
         self._lock = threading.RLock()
         self._persist_path = persist_path
-        if persist_path and os.path.exists(persist_path):
+        # Redis 共享后端 (可选): 整图 pickle 写入 Redis, 多 worker 共享同一份, 省去重复 LLM 抽取。
+        # 懒加载客户端; 未安装 redis 或连接失败 → _redis=None, 回退内存/文件, 不阻断启动。
+        self._redis = None
+        self._redis_key = redis_key or (os.path.basename(persist_path) if persist_path else "graph")
+        if redis_url:
+            try:
+                import redis as _redis_mod
+
+                self._redis = _redis_mod.from_url(redis_url, decode_responses=False)
+            except Exception as e:  # noqa: BLE001 — Redis 不可用回退内存/文件
+                logger.warning("图谱 Redis 后端初始化失败, 回退内存/文件: %s", str(e)[:120])
+                self._redis = None
+        # 恢复优先级: Redis (共享, 多 worker 一致) → pickle 文件 (重启) → 空图
+        # redis_loaded: True=已从 Redis 恢复; False=Redis 缺失/损坏需回退文件; None=无 Redis 走文件
+        redis_loaded = self._load_redis() if self._redis is not None else None
+        if redis_loaded is not True and persist_path and os.path.exists(persist_path):
             self._load(persist_path)
 
     def _save(self) -> None:
-        """持久化图谱到 pickle (build_from_chunks 完成后调用; 不每步落盘避免大图 I/O 抖动)。"""
-        if not self._persist_path:
-            return
-        try:
-            os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
-            with open(self._persist_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "nodes": self.nodes,
-                        "edges": self.edges,
-                        "adj_out": dict(self.adj_out),
-                        "adj_in": dict(self.adj_in),
-                        "edge_keys": self._edge_keys,
-                        "lower_index": self._lower_index,
-                    },
-                    f,
-                )
-        except OSError as e:
-            logger.warning("图谱持久化写入失败: %s", str(e)[:120])
+        """持久化图谱 (build_from_chunks 完成后调用; 不每步落盘避免大图 I/O 抖动)。
+
+        双写: (1) 本地 pickle 文件 (重启恢复, 与 BM25 对称); (2) Redis (多 worker 共享同一份,
+        首个 ingest 的 worker 写入, 其余 worker 直接加载, 省去重复 LLM 抽取 + 保证图谱一致)。
+        """
+        blob = pickle.dumps(
+            {
+                "nodes": self.nodes,
+                "edges": self.edges,
+                "adj_out": dict(self.adj_out),
+                "adj_in": dict(self.adj_in),
+                "edge_keys": self._edge_keys,
+                "lower_index": self._lower_index,
+            }
+        )
+        if self._persist_path:
+            try:
+                os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
+                with open(self._persist_path, "wb") as f:
+                    f.write(blob)
+            except OSError as e:
+                logger.warning("图谱持久化写入失败: %s", str(e)[:120])
+        if self._redis is not None:
+            try:
+                self._redis.set(self._redis_key, blob)
+            except Exception as e:  # noqa: BLE001 — Redis 写入失败不阻断 (内存态仍可用)
+                logger.warning("图谱 Redis 写入失败: %s", str(e)[:120])
 
     def _load(self, path: str) -> None:
         """从 pickle 恢复图谱; 损坏则回退空图 (不阻断启动)。"""
@@ -66,6 +94,25 @@ class GraphStore(GraphStoreInterface):
             logger.info("图谱从 %s 恢复: %d 节点 %d 边", path, len(self.nodes), len(self.edges))
         except Exception as e:  # noqa: BLE001 — 持久化损坏回退空图
             logger.warning("图谱持久化加载失败, 回退空图: %s", str(e)[:120])
+
+    def _load_redis(self) -> bool:
+        """从 Redis 恢复整图 (二进制 pickle)。成功返回 True; 缺失/损坏返回 False (调用方回退文件/空图)。"""
+        try:
+            blob = self._redis.get(self._redis_key)
+            if not blob:
+                return False
+            data = pickle.loads(blob)
+            self.nodes = data["nodes"]
+            self.edges = data["edges"]
+            self.adj_out = defaultdict(list, data.get("adj_out", {}))
+            self.adj_in = defaultdict(list, data.get("adj_in", {}))
+            self._edge_keys = set(data.get("edge_keys", set()))
+            self._lower_index = data.get("lower_index", {})
+            logger.info("图谱从 Redis(%s) 恢复: %d 节点 %d 边", self._redis_key, len(self.nodes), len(self.edges))
+            return True
+        except Exception as e:  # noqa: BLE001 — Redis 损坏/不可达回退
+            logger.warning("图谱 Redis 加载失败, 回退: %s", str(e)[:120])
+            return False
 
     def save(self) -> None:
         """显式落盘 (build_from_chunks 结束时调用)。"""

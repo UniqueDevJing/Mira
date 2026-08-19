@@ -29,7 +29,11 @@ class CacheBackend(Protocol):
 
 
 class InMemoryBackend:
-    """内存后端 — 默认实现。TTL 惰性过期, 容量上限防无限增长。"""
+    """内存后端 — 默认实现。TTL 惰性过期, 容量上限防无限增长, LRU 淘汰保活跃项。
+
+    LRU 语义: get/set 命中既存 key 时将其移到末尾 (最近使用), 满则逐出最久未访问项。
+    否则频繁命中的活跃会话/QA 缓存会被插入序淘汰提前清掉 (共享 4096 上限下尤甚)。
+    """
 
     def __init__(self, max_entries: int = 4096):
         self._data: dict[str, tuple[str, float]] = {}  # key -> (value, expires_at)
@@ -45,6 +49,8 @@ class InMemoryBackend:
             if exp < time.monotonic():
                 del self._data[key]
                 return None
+            # 命中且未过期 → 移到末尾标记最近使用 (LRU)
+            self._data[key] = self._data.pop(key)
             return val
 
     def set(self, key: str, value: str, ttl_s: int) -> None:
@@ -52,7 +58,9 @@ class InMemoryBackend:
             if len(self._data) >= self._max:
                 self._evict_expired_locked()
                 if len(self._data) >= self._max:
-                    self._data.pop(next(iter(self._data)))  # 满且无过期项 → 丢最旧
+                    self._data.pop(next(iter(self._data)))  # 满且无过期项 → 丢最久未访问
+            # 既存 key 重写 → 移到末尾标记最近使用 (LRU)
+            self._data.pop(key, None)
             self._data[key] = (value, time.monotonic() + ttl_s)
 
     def delete(self, key: str) -> None:
@@ -72,13 +80,13 @@ class InMemoryBackend:
 class RedisBackend:
     """Redis 后端 — 值存 JSON 字符串, TTL 由 Redis 原生 EX 控制。
 
-    懒加载 redis 客户端 (仅构造时 import), 未安装 redis 时构造失败由调用方回退内存。
+    懒加载 redis 客户端 (仅构造时 import), 未安装 redis 或不可达时由 get_cache_backend 回退内存。
     """
 
     def __init__(self, redis_url: str, key_prefix: str = "rag:"):
         import redis
 
-        self._r = redis.from_url(redis_url, decode_responses=True)
+        self._r = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
         self._prefix = key_prefix
 
     def _k(self, key: str) -> str:
@@ -116,8 +124,10 @@ def get_cache_backend() -> CacheBackend:
             if _backend is None:
                 if settings.shared_state_backend == "redis" and settings.redis_url:
                     try:
-                        _backend = RedisBackend(settings.redis_url)
-                    except Exception:  # noqa: BLE001 — Redis 不可用回退内存, 不阻断启动
+                        backend = RedisBackend(settings.redis_url)
+                        backend._r.ping()  # 启动探活: 不可达 → 回退内存, 避免运行期每请求 500
+                        _backend = backend
+                    except Exception:  # noqa: BLE001 — Redis 不可用/不可达回退内存, 不阻断启动
                         _backend = InMemoryBackend()
                 else:
                     _backend = InMemoryBackend()

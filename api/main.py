@@ -27,9 +27,11 @@ async def lifespan(app: FastAPI):
 
     # 预热模型（确保所有模型在请求到来前加载完毕）
     try:
-        from engines.embedding.embedder import EmbeddingService
+        from api.state import get_embedder
 
-        EmbeddingService().embed_query("warmup")
+        # 预热当前配置的真实单例模型 (get_embedder 用 settings.embedding_model);
+        # 原 EmbeddingService() 硬编码默认模型, 改动 RAG_EMBEDDING_MODEL 后预热错模型 → 首请求冷加载。
+        get_embedder().embed_query("warmup")
         logger.info("模型预热完成")
     except Exception as e:  # noqa: BLE001 — 预热是尽力而为, 失败不阻塞启动
         logger.warning("模型预热跳过: %s", str(e)[:200])

@@ -38,18 +38,34 @@ def test_inmemory_clear():
     assert b.get("b") is None
 
 
+def test_inmemory_lru_evicts_least_recently_used():
+    """LRU: 容量满时逐出最久未访问项, 而非最旧插入项。
+
+    覆盖共享 4096 上限下活跃会话被插入序提前淘汰的隐患。
+    """
+    b = InMemoryBackend(max_entries=2)
+    b.set("a", "1", ttl_s=600)
+    b.set("b", "2", ttl_s=600)
+    # 访问 a → a 变为最近使用, b 成为最久未访问
+    assert b.get("a") == "1"
+    b.set("c", "3", ttl_s=600)  # 满 → 应逐出 b
+    assert b.get("b") is None  # 最久未访问被逐
+    assert b.get("a") == "1"  # 活跃项保留
+    assert b.get("c") == "3"
+
+
 def test_default_backend_is_inmemory(monkeypatch):
     _reset_backend(monkeypatch)
     assert isinstance(get_cache_backend(), InMemoryBackend)
 
 
 def test_redis_unavailable_falls_back_to_memory(monkeypatch):
-    """配置 redis 但 redis 未安装/不可达 → 回退内存, 不阻断启动。"""
+    """配置 redis 但 redis 不可达 → 启动探活失败回退内存, 不阻断启动。"""
     _reset_backend(monkeypatch)
     monkeypatch.setattr(settings, "shared_state_backend", "redis")
     monkeypatch.setattr(settings, "redis_url", "redis://127.0.0.1:6399")  # 无服务
     backend = get_cache_backend()
-    assert isinstance(backend, InMemoryBackend)  # redis 包未装 → 构造失败回退
+    assert isinstance(backend, InMemoryBackend)  # 探活失败 → 回退内存
 
 
 def test_qa_cache_via_backend_roundtrip(monkeypatch):

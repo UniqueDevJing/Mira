@@ -334,7 +334,7 @@ async def _retrieve_context(
         return await _retrieve_self(question, routing, top_k, start)
 
     kb = routing.kb
-    embedder = EmbeddingService(model_name=settings.embedding_model, device=settings.embedding_device)
+    embedder = get_embedder()
     retr_start = time.time()
 
     vq, bq = _preprocess_query(question, routing, kb)
@@ -508,7 +508,7 @@ async def _retrieve_self(question: str, routing: RoutingResult, top_k: int, star
     """
     kb = routing.kb
     vector_store = get_vector_store(kb)
-    embedder = EmbeddingService(model_name=settings.embedding_model, device=settings.embedding_device)
+    embedder = get_embedder()
     degradation = 0
     retr_start = time.time()
 
@@ -1194,7 +1194,7 @@ def _retrieve_kb(kb: str, vector_query: str, bm25_query: str, top_k: int) -> lis
     """同步检索单个库（向量 + BM25 → RRF），用于跨库兜底。"""
     vs = get_vector_store(kb)
     bm = get_bm25_index(kb)
-    embedder = EmbeddingService(model_name=settings.embedding_model, device=settings.embedding_device)
+    embedder = get_embedder()
     try:
         q_emb = embedder.embed_query(vector_query)
         vd = vs.search(q_emb, top_k=top_k * 2)

@@ -29,6 +29,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "prometheus-client>=0.21.0",
     "slowapi>=0.1.9",
+    "redis>=5.0.0",
 ]
 
 # 只打包 api + engines 两个 Python 包; web(前端)/infrastructure(docker) 非 Python 包,
