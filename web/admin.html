@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#4f6ef7">
 <title>RAG 2.0 — 管理后台</title>
+<link rel="icon" href="data:,">
 <script>
   (function(){
     try {
@@ -173,14 +174,38 @@
 <script src="/web/markdown.js"></script>
 <script>
 // 依赖: /web/common.js /web/icons.js /web/markdown.js (上方已同步加载)
+// 兜底实现: 公共资源缺失(静态预览/纯静态托管)时页面降级为"可用但明确报错", 而非整页 JS 死亡
 const RAG = window.RAG;
-if (!RAG || !RAG.apiFetch) throw new Error('web/common.js 未加载');
-// 本地别名, 保留既有调用写法
-const API = RAG.API;
-const authHeaders = RAG.authHeaders;
-const apiFetch = RAG.apiFetch;
-const escapeHtml = RAG.escapeHtml;
-const ICON = (name, spin) => RAG.icon(name, spin);
+const HAS_COMMON = !!(RAG && RAG.apiFetch && RAG.icon);
+const API = (RAG && RAG.API) || '/api/v1';
+function authHeaders() {
+  const k = localStorage.getItem('rag_api_key') || '';
+  return k ? {'X-API-Key': k} : {};
+}
+async function apiFetch(url, opts) {
+  opts = opts || {};
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = 'HTTP ' + r.status;
+    try { const d = await r.json(); if (d.detail) msg = d.detail; } catch(e) {}
+    throw new Error(msg);
+  }
+  return r;
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const ICON = (name, spin) => (RAG && RAG.icon) ? RAG.icon(name, spin) : '';
+
+// 公共资源缺失时的可见提示(替代静默 throw)
+if (!HAS_COMMON) {
+  try {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:0;z-index:99;background:#b45309;color:#fff;text-align:center;padding:8px 12px;font-size:13px;';
+    bar.textContent = '⚠️ 前端公共资源未加载（/web/*.js 404）——请通过后端服务访问：python -m uvicorn api.main:app';
+    document.body.prepend(bar);
+  } catch(e) {}
+}
 
 // ── 初始化 ──
 document.getElementById('apiKeyInput').value = localStorage.getItem('rag_api_key') || '';
@@ -272,7 +297,7 @@ function handleFile(f) {
   document.getElementById('uploadBtn').disabled = false;
 }
 document.getElementById('uploadBtn').onclick = async () => {
-  if (!selectedFile) return;
+  if (!selectedFile) { alert('请先选择要上传的文件'); return; }
   const btn = document.getElementById('uploadBtn');
   btn.disabled = true; btn.innerHTML = ICON('spinner', true) + ' 解析中...';
   const fd = new FormData(); fd.append('file', selectedFile); fd.append('knowledge_base', document.getElementById('kbSelect').value);
