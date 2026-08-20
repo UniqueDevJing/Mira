@@ -17,7 +17,6 @@
     } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
   })();
 </script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
 <style>
   /* ── 设计系统 ─────────────────────────────── */
   :root {
@@ -70,20 +69,20 @@
     max-width: 1100px; margin: 0 auto; padding: 12px 20px;
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
   }
-  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .brand-icon {
     width: 38px; height: 38px; border-radius: 11px;
     background: var(--gradient); color: #fff;
     display: grid; place-items: center; font-size: 17px;
     box-shadow: 0 4px 12px rgba(79,110,247,.35);
   }
-  .brand-name { font-size: 19px; font-weight: 700; letter-spacing: -.3px; }
+  .brand-name { font-size: 19px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
   .brand-tag {
     font-size: 11px; padding: 3px 8px; border-radius: 999px;
     background: var(--gradient-soft); color: var(--primary);
     font-weight: 600;
   }
-  .navbar-right { display: flex; align-items: center; gap: 14px; }
+  .navbar-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 
   .key-input {
     border: 1px solid var(--border); border-radius: 9px;
@@ -104,7 +103,7 @@
   /* ── 主容器 / 标签页 ───────────────────────── */
   .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
 
-  .tabs { display: flex; gap: 8px; margin-bottom: 22px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
   .tab-btn {
     border: 1px solid transparent; border-radius: 999px;
     padding: 9px 20px; font-size: 14px; font-weight: 600;
@@ -145,10 +144,6 @@
     border-color: var(--primary); background: var(--gradient-soft);
     transform: translateY(-2px);
   }
-  .drop-zone .fa-file-pdf-o {
-    font-size: 52px; color: #c3cbe0; transition: transform .3s, color .3s;
-  }
-  .drop-zone:hover .fa-file-pdf-o { transform: translateY(-4px) scale(1.06); color: var(--primary); }
   .drop-title { color: var(--text); margin: 14px 0 4px; font-weight: 600; }
   .drop-sub { font-size: 12px; color: var(--text-3); }
 
@@ -158,10 +153,14 @@
     justify-content: space-between; gap: 10px; font-size: 14px;
   }
   .sel-file .name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sel-file .fa-times { color: var(--text-3); cursor: pointer; }
-  .sel-file .fa-times:hover { color: var(--danger); }
+  .sel-clear {
+    background: none; border: none; color: var(--text-3); cursor: pointer;
+    padding: 4px; display: inline-flex; align-items: center; border-radius: 6px;
+    transition: color .15s, background .15s;
+  }
+  .sel-clear:hover { color: var(--danger); background: rgba(239,68,68,.1); }
 
-  .kb-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; font-size: 14px; }
+  .kb-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; font-size: 14px; flex-wrap: wrap; }
   .kb-row label { color: var(--text-2); }
   select, .topk-select {
     border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px;
@@ -185,13 +184,21 @@
     width: 46px; height: 46px; border-radius: 12px; border: none;
     background: var(--gradient); color: #fff; font-size: 16px; cursor: pointer;
     box-shadow: 0 5px 16px rgba(79,110,247,.3); transition: all .2s;
+    display: grid; place-items: center;
   }
   .btn-icon:hover:not(:disabled) { transform: translateY(-2px); }
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-2); box-shadow: none;
+  }
+  .btn-ghost:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+  .btn-ghost:hover:not(:disabled) .icon { color: var(--danger); }
 
   .text-input {
     flex: 1; border: 1px solid var(--border); border-radius: 12px;
     padding: 12px 16px; font-size: 14px; color: var(--text);
     transition: border-color .2s, box-shadow .2s;
+    background: var(--card);
   }
   .text-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,.14); }
 
@@ -208,20 +215,20 @@
   .chat-area { flex: 1; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; max-height: 540px; }
 
   .empty-tip { text-align: center; color: var(--text-3); padding: 70px 0; }
-  .empty-tip .fa { font-size: 42px; margin-bottom: 12px; opacity: .5; }
 
   .msg-user {
     align-self: flex-end; max-width: 78%;
     background: var(--gradient); color: #fff; padding: 10px 16px;
     border-radius: 16px 16px 4px 16px; font-size: 14px; line-height: 1.5;
     box-shadow: 0 4px 14px rgba(79,110,247,.25);
+    word-break: break-word;
   }
   .msg-bot {
     background: var(--card); border: 1px solid var(--border);
     border-radius: 16px 16px 16px 4px; padding: 14px 18px;
     box-shadow: var(--shadow-sm);
   }
-  .msg-bot .answer { font-size: 14px; line-height: 1.7; color: var(--text); white-space: pre-wrap; }
+  .msg-bot .answer { font-size: 14px; line-height: 1.7; color: var(--text); }
   .msg-bot .meta { font-size: 12px; color: var(--text-3); margin-top: 10px; }
   .msg-bot .steps-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
   .msg-bot .steps-title { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
@@ -272,16 +279,15 @@
   .ring-label { font-size: 11px; color: var(--text-2); white-space: nowrap; }
 
   .thinking { display: flex; gap: 8px; color: var(--text-3); font-size: 13px; align-items: center; }
-  .thinking .fa-spin { color: var(--primary); }
 
   .ask-input-row { display: flex; gap: 10px; padding: 14px; border-top: 1px solid var(--border); }
-  .ask-opts { display: flex; gap: 16px; padding: 0 14px 14px; font-size: 12px; color: var(--text-3); }
+  .ask-opts { display: flex; gap: 16px; padding: 0 14px 14px; font-size: 12px; color: var(--text-3); flex-wrap: wrap; }
   .ask-opts label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
   .ask-opts .spacer { margin-left: auto; }
   .ask-opts input[type="radio"] { accent-color: var(--primary); }
 
   .sources-panel { padding: 16px; max-height: 540px; overflow-y: auto; }
-  .sources-panel h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .sources-panel h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text); display: flex; align-items: center; gap: 6px; }
   .source-item {
     margin-bottom: 10px; padding: 10px 12px; border-radius: 10px;
     background: var(--bg); border: 1px solid var(--border);
@@ -289,7 +295,7 @@
   }
   .source-score { font-family: ui-monospace, Consolas, monospace; color: var(--primary); font-weight: 600; }
   .source-chunk { color: var(--text-3); margin-left: 6px; }
-  .source-text { color: var(--text-2); margin-top: 5px; line-height: 1.5; }
+  .source-text { color: var(--text-2); margin-top: 5px; line-height: 1.5; word-break: break-word; }
   .no-source { color: var(--text-3); font-size: 13px; }
 
   /* ── 徽章 ────────────────────────────────── */
@@ -304,7 +310,7 @@
 
   /* ── 文档管理 ─────────────────────────────── */
   .doc-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-  .doc-head h3 { font-size: 15px; font-weight: 600; }
+  .doc-head h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .refresh-btn {
     background: transparent; border: none; color: var(--primary);
     font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 5px;
@@ -329,6 +335,7 @@
   .del-btn {
     background: transparent; border: none; color: var(--text-3); cursor: pointer;
     font-size: 14px; padding: 6px 8px; border-radius: 8px; transition: all .15s;
+    display: inline-flex;
   }
   .del-btn:hover { color: var(--danger); background: rgba(239,68,68,.1); }
 
@@ -336,9 +343,6 @@
   .fade-in { animation: fadeIn .35s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .hidden { display: none !important; }
-
-  .markdown pre { background: #1e2433; color: #d4d4d4; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
-  .markdown code { background: #f0f2fa; padding: 2px 6px; border-radius: 4px; font-size: .9em; }
 
   ::-webkit-scrollbar { width: 7px; height: 7px; }
   ::-webkit-scrollbar-thumb { background: #cdd4e6; border-radius: 4px; }
@@ -364,8 +368,8 @@
   :root[data-theme="dark"] .card::before {
     background: linear-gradient(135deg, rgba(79,110,247,.45), rgba(123,92,240,.18) 35%, rgba(255,255,255,0) 55%);
   }
-  :root[data-theme="dark"] .markdown code { background: rgba(255,255,255,.10); color: #d4d9ea; }
   :root[data-theme="dark"] .drop-zone { border-color: #313a55; }
+  :root[data-theme="dark"] .msg-user { box-shadow: 0 4px 14px rgba(79,110,247,.18); }
 
   .theme-toggle {
     width: 36px; height: 36px; border-radius: 10px;
@@ -374,7 +378,19 @@
     transition: all .2s;
   }
   .theme-toggle:hover { color: var(--primary); border-color: var(--primary); transform: translateY(-1px); }
+
+  /* ── 窄屏适配 ─────────────────────────────── */
+  @media (max-width: 760px) {
+    .navbar-inner { flex-wrap: wrap; padding: 10px 14px; }
+    .navbar-right { width: 100%; justify-content: flex-start; gap: 8px; }
+    .key-input { flex: 1; min-width: 120px; }
+    .container { padding: 16px 14px 48px; }
+    .ask-input-row { flex-wrap: wrap; }
+    .ask-input-row .text-input { min-width: 100%; order: -1; }
+    .msg-user, .msg-bot { max-width: 100%; }
+  }
 </style>
+<link rel="stylesheet" href="/web/common.css">
 </head>
 <body>
 
@@ -386,19 +402,19 @@
       <span class="brand-name">RAG 2.0</span>
       <span class="brand-tag">智能知识库</span>
     </div>
-      <div class="navbar-right">
-      <a href="/admin" class="nav-link" title="系统管理后台"
+    <div class="navbar-right">
+      <a href="/admin" class="nav-link" title="系统管理后台" aria-label="系统管理后台"
          style="color:var(--text-2);text-decoration:none;font-size:13px;display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;">
         <i class="fa fa-cog"></i> 管理后台
       </a>
-      <button id="themeToggle" class="theme-toggle" title="切换主题（亮/暗/跟随系统）" onclick="toggleTheme()">
+      <button id="themeToggle" class="theme-toggle" title="切换主题（亮/暗）" aria-label="切换主题">
         <i class="fa fa-moon-o"></i>
       </button>
-      <input id="apiKeyInput" type="password" placeholder="API Key"
+      <input id="apiKeyInput" type="password" placeholder="API Key" aria-label="API Key"
              title="服务端开启鉴权时需填写访问 Key"
              class="key-input"
              onchange="localStorage.setItem('rag_api_key', this.value)">
-      <span id="apiStatus" class="status">
+      <span id="apiStatus" class="status" role="status">
         <span class="dot dot-check"></span> 检测中
       </span>
       <span id="docCount" class="doc-count hidden">· <span id="docCountNum">0</span> 文档</span>
@@ -409,14 +425,14 @@
 <main class="container">
 
 <!-- 标签切换 -->
-<div class="tabs">
-  <button onclick="switchTab('upload')" id="tab-upload" class="tab-btn active">
+<div class="tabs" role="tablist">
+  <button onclick="switchTab('upload')" id="tab-upload" class="tab-btn active" role="tab" aria-selected="true">
     <i class="fa fa-cloud-upload"></i> 文档上传
   </button>
-  <button onclick="switchTab('ask')" id="tab-ask" class="tab-btn">
+  <button onclick="switchTab('ask')" id="tab-ask" class="tab-btn" role="tab" aria-selected="false">
     <i class="fa fa-comments"></i> 知识问答
   </button>
-  <button onclick="switchTab('docs')" id="tab-docs" class="tab-btn">
+  <button onclick="switchTab('docs')" id="tab-docs" class="tab-btn" role="tab" aria-selected="false">
     <i class="fa fa-folder-open"></i> 文档管理
   </button>
 </div>
@@ -434,10 +450,10 @@
       </div>
       <div id="selectedFile" class="sel-file hidden">
         <span id="selectedFileName" class="name"></span>
-        <i class="fa fa-times" onclick="clearFile()"></i>
+        <button type="button" class="sel-clear" onclick="clearFile()" aria-label="清除所选文件" title="清除所选文件"><i class="fa fa-times"></i></button>
       </div>
       <div class="kb-row">
-        <label>目标知识库</label>
+        <label for="kbSelect">目标知识库</label>
         <select id="kbSelect">
           <option value="documents">默认库</option>
           <option value="service">客服话术库</option>
@@ -458,17 +474,18 @@
   <div class="qa-grid">
     <!-- 对话区 -->
     <div class="card chat-panel">
-      <div id="chatArea" class="chat-area">
+      <div id="chatArea" class="chat-area" role="log" aria-live="polite" aria-label="对话记录">
         <div class="empty-tip">
           <i class="fa fa-commenting-o"></i>
           <p>上传文档后即可开始提问</p>
         </div>
       </div>
       <div class="ask-input-row">
-        <input id="questionInput" type="text" placeholder="输入你的问题..."
+        <input id="questionInput" type="text" placeholder="输入你的问题..." aria-label="输入你的问题"
                onkeydown="if(event.key==='Enter')askQuestion()" class="text-input">
-        <button onclick="askQuestion()" id="askBtn" class="btn-icon"><i class="fa fa-send"></i></button>
-        <button onclick="clearChat()" id="clearBtn" class="btn-icon btn-ghost" title="清空对话(重置多轮上下文)"><i class="fa fa-trash"></i></button>
+        <button onclick="askQuestion()" id="askBtn" class="btn-icon" aria-label="发送问题" title="发送问题"><i class="fa fa-send"></i></button>
+        <button onclick="stopGeneration()" id="stopBtn" class="btn-icon btn-ghost" style="display:none" aria-label="停止生成" title="停止生成"><i class="fa fa-times"></i></button>
+        <button onclick="clearChat()" id="clearBtn" class="btn-icon btn-ghost" aria-label="清空对话" title="清空对话(重置多轮上下文)"><i class="fa fa-trash"></i></button>
       </div>
       <div class="ask-opts">
         <label><input type="radio" name="mode" value="hybrid" checked> 混合检索</label>
@@ -488,7 +505,7 @@
     <!-- 来源面板 -->
     <div class="card sources-panel">
       <h3><i class="fa fa-file-text-o"></i> 参考来源</h3>
-      <div id="sourcesPanel" class="no-source">等待提问...</div>
+      <div id="sourcesPanel" class="no-source" aria-live="polite">等待提问...</div>
     </div>
   </div>
 </div>
@@ -508,29 +525,28 @@
 
 </main>
 
+<script src="/web/common.js"></script>
+<script src="/web/icons.js"></script>
+<script src="/web/markdown.js"></script>
 <script>
-// 相对路径: 任意主机访问同一服务 (局域网/公网), 不用硬编码 127.0.0.1
-const API = '/api/v1';
-function authHeaders() {
-  const k = localStorage.getItem('rag_api_key') || '';
-  return k ? {'X-API-Key': k} : {};
-}
-// 统一 API 调用: 非 2xx 时解析后端 detail 报错, 避免把 {"detail":...} 当成功数据渲染
-async function apiFetch(url, opts = {}) {
-  const r = await fetch(url, opts);
-  if (!r.ok) {
-    let msg = 'HTTP ' + r.status;
-    try { const d = await r.json(); if (d.detail) msg = d.detail; } catch(e) {}
-    throw new Error(msg);
-  }
-  return r;
-}
+// 依赖: /web/common.js /web/icons.js /web/markdown.js (上方已同步加载)
+const RAG = window.RAG;
+if (!RAG || !RAG.apiFetch) throw new Error('web/common.js 未加载');
+// 本地别名, 保留既有调用写法
+const API = RAG.API;
+const authHeaders = RAG.authHeaders;
+const apiFetch = RAG.apiFetch;
+const escapeHtml = RAG.escapeHtml;
+const getSessionId = RAG.getSessionId;
+const resetSessionId = RAG.resetSessionId;
+const ICON = (name, spin) => RAG.icon(name, spin);
+
 let selectedFile = null;
+let currentController = null;
 
 // 初始化
 (async () => {
   document.getElementById('apiKeyInput').value = localStorage.getItem('rag_api_key') || '';
-  updateThemeIcon(document.documentElement.getAttribute('data-theme'));
   try { const r = await fetch('/health', {headers: authHeaders()});
     document.getElementById('apiStatus').innerHTML = '<span class="dot dot-ok"></span> API 在线';
   } catch(e) { document.getElementById('apiStatus').innerHTML = '<span class="dot dot-err"></span> API 离线'; }
@@ -542,24 +558,12 @@ function switchTab(tab) {
   ['upload','ask','docs'].forEach(t => {
     document.getElementById('panel-'+t).classList.add('hidden');
     document.getElementById('tab-'+t).classList.remove('active');
+    document.getElementById('tab-'+t).setAttribute('aria-selected', 'false');
   });
   document.getElementById('panel-'+tab).classList.remove('hidden');
   document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).setAttribute('aria-selected', 'true');
   if (tab === 'docs') refreshDocList();
-}
-
-// 主题切换：light / dark 循环，持久化到 localStorage
-function toggleTheme() {
-  const root = document.documentElement;
-  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-  root.setAttribute('data-theme', next);
-  try { localStorage.setItem('rag_theme', next); } catch(e) {}
-  updateThemeIcon(next);
-}
-function updateThemeIcon(t) {
-  const el = document.getElementById('themeToggle');
-  if (!el) return;
-  el.innerHTML = t === 'dark' ? '<i class="fa fa-sun-o"></i>' : '<i class="fa fa-moon-o"></i>';
 }
 
 // 文件处理
@@ -585,7 +589,7 @@ function clearFile() { selectedFile = null; document.getElementById('selectedFil
 async function uploadFile() {
   if (!selectedFile) return;
   const btn = document.getElementById('uploadBtn');
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> 解析中...';
+  btn.disabled = true; btn.innerHTML = ICON('spinner', true) + ' 解析中...';
   const fd = new FormData(); fd.append('file', selectedFile);
   fd.append('knowledge_base', document.getElementById('kbSelect').value);
   try {
@@ -594,7 +598,7 @@ async function uploadFile() {
     document.getElementById('uploadResult').classList.remove('hidden');
     document.getElementById('uploadResult').innerHTML = `
       <div class="alert alert-success">
-        <p><strong><i class="fa fa-check-circle"></i> 上传成功</strong></p>
+        <p><strong>${ICON('check-circle')} 上传成功</strong></p>
         <p style="margin-top:6px;font-size:13px;">文档ID: <code>${escapeHtml(data.doc_id)}</code></p>
         <p style="font-size:13px;">状态: ${escapeHtml(data.status)}</p>
       </div>`;
@@ -602,9 +606,9 @@ async function uploadFile() {
     refreshDocList();
   } catch(e) {
     document.getElementById('uploadResult').classList.remove('hidden');
-    document.getElementById('uploadResult').innerHTML = `<div class="alert alert-danger"><i class="fa fa-times-circle"></i> 上传失败: ${escapeHtml(e.message)}</div>`;
+    document.getElementById('uploadResult').innerHTML = `<div class="alert alert-danger">${ICON('x-circle')} 上传失败: ${escapeHtml(e.message)}</div>`;
   }
-  btn.disabled = false; btn.innerHTML = '<i class="fa fa-rocket"></i> 上传并解析';
+  btn.disabled = false; btn.innerHTML = ICON('rocket') + ' 上传并解析';
 }
 
 // 环形仪表: 颜色渐变 (高值绿→中黄→低红), 参数 goodHigh 反转语义
@@ -634,7 +638,7 @@ function renderMetrics(el, m) {
   if (!el || !m || typeof m.faithfulness !== 'number') return;
   const halPct = Math.round((1 - m.faithfulness) * 100);
   const warn = halPct > 40
-    ? `<div class="metrics-warn"><i class="fa fa-exclamation-triangle"></i> 幻觉风险偏高，回答可能超出知识库，请核对来源</div>`
+    ? `<div class="metrics-warn">${ICON('exclamation-triangle')} 幻觉风险偏高，回答可能超出知识库，请核对来源</div>`
     : '';
   const rings = [
     ringHTML('幻觉率', (1 - m.faithfulness), false),
@@ -701,31 +705,16 @@ function renderSteps(el, lb, meta, degLevel) {
 // 多轮对话上下文(客户端维护, 服务端无状态透传); 后端取最近 20 轮
 let chatHistory = [];
 
-// 会话 ID: 首次对话生成并持久化到 localStorage, 服务端按 session 维护历史(刷新/换设备不丢)
-function getSessionId() {
-  let sid = localStorage.getItem('rag_session_id');
-  if (!sid) {
-    sid = (crypto.randomUUID ? crypto.randomUUID() : 's-' + Date.now() + '-' + Math.random().toString(36).slice(2));
-    try { localStorage.setItem('rag_session_id', sid); } catch (e) {}
-  }
-  return sid;
-}
-function resetSessionId() {
-  const old = localStorage.getItem('rag_session_id');
-  if (old) {
-    // 通知服务端清除(忽略失败: 本地已丢弃即可)
-    fetch(API + '/qa/session/' + encodeURIComponent(old), {method: 'DELETE', headers: authHeaders()}).catch(() => {});
-  }
-  const sid = 's-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  try { localStorage.setItem('rag_session_id', sid); } catch (e) {}
-  return sid;
-}
-
 function clearChat() {
   chatHistory = [];
   resetSessionId();
   const chat = document.getElementById('chatArea');
-  chat.innerHTML = `<div class="empty-tip"><i class="fa fa-commenting-o"></i><p>上传文档后即可开始提问</p></div>`;
+  chat.innerHTML = `<div class="empty-tip">${ICON('commenting-o')}<p>上传文档后即可开始提问</p></div>`;
+}
+
+// 停止当前流式生成
+function stopGeneration() {
+  if (currentController) currentController.abort();
 }
 
 async function askQuestion() {
@@ -743,14 +732,16 @@ async function askQuestion() {
   chat.innerHTML += `<div class="msg-user fade-in">${escapeHtml(q)}</div>`;
   document.getElementById('questionInput').value = '';
   document.getElementById('askBtn').disabled = true;
+  const stopBtn = document.getElementById('stopBtn');
+  stopBtn.style.display = 'grid';
 
   const thinkingId = 'thinking_'+Date.now();
-  chat.innerHTML += `<div id="${thinkingId}" class="thinking fade-in"><i class="fa fa-spinner fa-spin"></i> 思考中...</div>`;
+  chat.innerHTML += `<div id="${thinkingId}" class="thinking fade-in">${ICON('spinner', true)} 思考中...</div>`;
   chat.scrollTop = chat.scrollHeight;
 
   // 答案容器（流式期间动态填充）
   const answerId = 'answer_'+Date.now();
-  chat.innerHTML += `<div id="${answerId}" class="msg-bot fade-in"><div class="metrics-box"></div><div class="answer"></div>
+  chat.innerHTML += `<div id="${answerId}" class="msg-bot fade-in"><div class="metrics-box"></div><div class="answer markdown"></div>
     <div class="meta"></div><div class="ans-steps"></div></div>`;
   const ansBox = document.getElementById(answerId);
   const ansMetrics = ansBox.querySelector('.metrics-box');
@@ -760,10 +751,15 @@ async function askQuestion() {
   const sp = document.getElementById('sourcesPanel');
   const skillMap = {service:'客服库', tech:'技术库', direct:'直接回答'};
 
+  // AbortController: 支持"停止生成"
+  const controller = new AbortController();
+  currentController = controller;
+
   try {
     // 流式读取 SSE: POST /qa/ask/stream
     const r = await fetch(API+'/qa/ask/stream', {method:'POST',
       headers:{'Content-Type':'application/json', ...authHeaders()},
+      signal: controller.signal,
       body: JSON.stringify({question: q, top_k: topK, temperature: temperature,
         mode: mode==='dense'?'vector':mode, enable_self_retrieval: false,
         history: chatHistory.slice(0, -1), session_id: getSessionId()})});
@@ -802,7 +798,7 @@ async function askQuestion() {
         } else if (ev.type === 'error') {
           const thinkingEl = document.getElementById(thinkingId);
           if (thinkingEl) thinkingEl.remove();
-          ansText.textContent += `\n[生成中断] ${escapeHtml(ev.detail || '请重试')}`;
+          ansText.textContent += '\n[生成中断] ' + (ev.detail || '请重试');
         } else if (ev.type === 'done') {
           skill = ev.skill || skill;
           routingSource = ev.routing_source || routingSource;
@@ -821,17 +817,21 @@ async function askQuestion() {
     }
     const thinkingEl = document.getElementById(thinkingId);
     if (thinkingEl) thinkingEl.remove();
+    // 流结束: 纯文本 → 安全 Markdown 渲染 (先转义后格式化, 无 XSS)
+    ansText.innerHTML = RAG.renderMarkdown(ansText.textContent);
   } catch(e) {
     const thinkingEl = document.getElementById(thinkingId);
     if (thinkingEl) thinkingEl.remove();
-    chat.innerHTML += `<div class="msg-bot fade-in" style="color:var(--danger)">请求失败: ${escapeHtml(e.message)}</div>`;
+    if (e.name === 'AbortError') {
+      ansText.textContent += '\n[已停止生成]';
+    } else {
+      chat.innerHTML += `<div class="msg-bot fade-in" style="color:var(--danger)">请求失败: ${escapeHtml(e.message)}</div>`;
+    }
   }
+  currentController = null;
+  stopBtn.style.display = 'none';
   document.getElementById('askBtn').disabled = false;
   chat.scrollTop = chat.scrollHeight;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // 解析单个 SSE data 块; 坏块(截断/非法 JSON)返回 null 而非抛异常, 由调用方跳过继续
@@ -864,7 +864,7 @@ async function refreshDocList() {
         </div>
         <div class="doc-right">
           <span class="doc-id">${escapeHtml(d.doc_id)}</span>
-          <button class="del-btn" title="删除文档" data-doc-id="${escapeHtml(d.doc_id)}"><i class="fa fa-trash-o"></i></button>
+          <button class="del-btn" title="删除文档" aria-label="删除文档" data-doc-id="${escapeHtml(d.doc_id)}">${ICON('trash')}</button>
         </div>
       </div>`).join('');
   } catch(e) { el.innerHTML = `<div class="empty-tip" style="color:var(--danger)">加载失败: ${escapeHtml(e.message)}</div>`; }

@@ -96,6 +96,12 @@ app.include_router(documents.router)
 app.include_router(qa.router)
 app.include_router(auth.router)
 
+# 前端静态资源 (common.js / icons.js / markdown.js / common.css) — 去除 Font Awesome CDN 依赖, 离线可用
+from fastapi.staticfiles import StaticFiles
+
+WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
+app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web-static")
+
 
 @app.get("/health")
 async def health():
