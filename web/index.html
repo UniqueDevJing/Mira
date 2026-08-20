@@ -568,6 +568,8 @@ function resetSessionId() {
   return sid;
 }
 const ICON = (name, spin) => (RAG && RAG.icon) ? RAG.icon(name, spin) : '';
+// Markdown 渲染兜底: markdown.js 加载失败(网络抖动/静态环境)时降级为纯文本(仍安全转义), 不抛错
+const renderMarkdown = (s) => (RAG && RAG.renderMarkdown) ? RAG.renderMarkdown(s) : escapeHtml(s);
 
 // 公共资源缺失时的可见提示(替代静默 throw)
 if (!HAS_COMMON) {
@@ -855,8 +857,8 @@ async function askQuestion() {
     }
     const thinkingEl = document.getElementById(thinkingId);
     if (thinkingEl) thinkingEl.remove();
-    // 流结束: 纯文本 → 安全 Markdown 渲染 (先转义后格式化, 无 XSS)
-    ansText.innerHTML = RAG.renderMarkdown(ansText.textContent);
+    // 流结束: 纯文本 → 安全 Markdown 渲染 (先转义后格式化, 无 XSS; 渲染器缺失时降级纯文本)
+    ansText.innerHTML = renderMarkdown(ansText.textContent);
   } catch(e) {
     const thinkingEl = document.getElementById(thinkingId);
     if (thinkingEl) thinkingEl.remove();
