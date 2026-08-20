@@ -13,15 +13,16 @@ logger = logging.getLogger(__name__)
 
 # 管理后台页面 (/admin) 与 Prometheus 指标 (/metrics) 免鉴权直出:
 # - /admin 仅交付静态控制台 HTML, 其内数据接口仍走 X-API-Key 鉴权;
-# - /metrics 供同栈 Prometheus 抓取 (跨容器非 loopback 客户端), 内部监控标准做法。
-EXEMPT_PATHS = {"/health", "/", "/admin", "/metrics", "/docs", "/openapi.json", "/redoc"}
+# - /metrics 供同栈 Prometheus 抓取 (跨容器非 loopback 客户端), 内部监控标准做法;
+# - /web 前端静态资源 (index/admin 引用的 JS/CSS/图标) 公开直出, 数据接口仍在 /api/v1 下鉴权。
+EXEMPT_PATHS = {"/health", "/", "/admin", "/metrics", "/docs", "/openapi.json", "/redoc", "/web"}
 
 API_KEY_HEADER = "X-API-Key"
 BEARER_PREFIX = "Bearer "
 
 
 def _is_exempt(path: str) -> bool:
-    return path in EXEMPT_PATHS or path.startswith(("/docs", "/openapi"))
+    return path in EXEMPT_PATHS or path.startswith(("/docs", "/openapi", "/web"))
 
 
 def _is_local_loopback(request: Request) -> bool:
