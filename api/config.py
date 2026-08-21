@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # 注意: security.py 以 os.environ 优先 (支持运行时/测试动态覆盖), 此处读 .env 兜底
     api_key_enabled: bool = False
     api_key: str = ""  # 单 Key 兼容 (视为 admin, 可访问全部知识库)
+    # S4 安全: 本机 loopback (127.0.0.1) 免鉴权豁免 — 显式开关, 生产默认关。
+    # 部署在反向代理后必须关闭: 代理未转发 XFF/Cf-Connecting-Ip 时外部请求会被误判 loopback 全匿名绕过。
+    # 本机开发/测试如需免 Key 直连, 显式设 RAG_LOOPBACK_EXEMPT=true。
+    loopback_exempt: bool = False
     # 多 Key 白名单: JSON 映射 "<key>": {"name": str, "kbs": [str] | "*", "role": "admin"|"reader"}
     # kbs="*" / 缺省 / null = 全部知识库; role 仅语义标记, 实际权限由 allowed_kbs 决定
     api_key_whitelist: str = ""

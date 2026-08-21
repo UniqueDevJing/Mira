@@ -13,7 +13,7 @@ from api.core.document_store import get_document_store
 from api.core.limiter import limiter
 from api.core.orchestrator import ask as orchestrate
 from api.core.orchestrator import ask_stream as orchestrate_stream
-from api.core.session_store import clear_session, load_session
+from api.core.session_store import clear_session, load_session, session_owner
 from api.schemas.qa import QARequest, QAResponse, SourceDocument, TokenUsage
 from engines.router.routing_rules import SKILLS
 
@@ -54,6 +54,7 @@ async def ask_question(req: QARequest, request: Request):
             history=req.history,
             session_id=req.session_id,
             allowed_kbs=principal.allowed_kbs,
+            owner=principal.key_id,  # S6: session 归属绑定
         )
     except KBForbiddenError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -145,6 +146,7 @@ async def ask_question_stream(req: QARequest, request: Request):
                 history=req.history,
                 session_id=req.session_id,
                 allowed_kbs=principal.allowed_kbs,
+                owner=principal.key_id,  # S6: session 归属绑定
             ):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":
@@ -182,15 +184,30 @@ async def ask_question_stream(req: QARequest, request: Request):
     )
 
 
+def _check_session_ownership(request: Request, session_id: str) -> None:
+    """S6 IDOR 防护: 会话归属校验 — 非 admin 且非创建者禁止读写他人会话。
+
+    无归属(旧数据/未绑定)视为宽松兼容: 仅 admin 可访问; reader 一律拒绝。
+    """
+    principal = get_principal(request)
+    if principal.is_admin():
+        return
+    owner = session_owner(session_id)
+    if owner is None or principal.key_id != owner:
+        raise HTTPException(status_code=403, detail="无权访问该会话 (会话归属其他 Key)")
+
+
 @router.get("/session/{session_id}")
-async def get_session(session_id: str):
-    """读取会话历史(用于前端刷新后恢复上下文)。"""
+async def get_session(session_id: str, request: Request):
+    """读取会话历史(用于前端刷新后恢复上下文)。S6: 归属校验防 IDOR 越权读。"""
+    _check_session_ownership(request, session_id)
     return {"session_id": session_id, "history": [t.model_dump() for t in load_session(session_id)]}
 
 
 @router.delete("/session/{session_id}")
-async def delete_session(session_id: str):
-    """清除会话历史(对应前端『清空对话』)。"""
+async def delete_session(session_id: str, request: Request):
+    """清除会话历史(对应前端『清空对话』)。S6: 归属校验防 IDOR 越权删。"""
+    _check_session_ownership(request, session_id)
     clear_session(session_id)
     return {"session_id": session_id, "cleared": True}
 

@@ -18,17 +18,23 @@ from api.schemas.documents import (
     DocumentUploadResponse,
 )
 from api.state import get_bm25_index, get_embedder, get_vector_store
+from engines.doc_types import doc_type_list
 from engines.parsing.registry import SUPPORTED_MIME, get_parser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 
-async def _process_document_background(doc_id: str, filename: str, content: bytes, kb: str = "documents"):
+async def _process_document_background(doc_id: str, filename: str, content: bytes, kb: str = "documents", doc_type: str = "policy"):
     """后台异步处理文档（不阻塞事件循环）"""
     doc_store = get_document_store()
     try:
-        result = await asyncio.to_thread(_process_document_pipeline, doc_id, filename, content, kb)
+        # P1 竞态防护: 处理前复查文档仍存在 (删除与后台处理并发时, 已删文档不再写向量/BM25 孤儿数据)
+        existing = await asyncio.to_thread(doc_store.get, doc_id)
+        if not existing:
+            logger.info("[%s] 文档已被删除, 跳过后台处理", doc_id)
+            return
+        result = await asyncio.to_thread(_process_document_pipeline, doc_id, filename, content, kb, doc_type)
         status = "empty" if result.get("chunks", 0) == 0 else "ready"
         # sqlite 同步 IO 卸载到线程池, 避免阻塞事件循环 (背景任务仍在 loop 上调度)
         await asyncio.to_thread(
@@ -43,26 +49,53 @@ async def _process_document_background(doc_id: str, filename: str, content: byte
         logger.exception("[%s] 文档处理失败", doc_id)
 
 
+def _sanitize_filename(filename: str | None) -> str:
+    """清洗文件名: 去除控制字符, 防存储型 XSS (文件名回显到前端 HTML) 与异常路径字符。"""
+    name = (filename or "").strip()
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    return name[:255]
+
+
+@router.get("/types")
+async def list_doc_types():
+    """前端上传下拉: 返回所有走知识库的文档类型 (type_id/label/description/kb)。"""
+    return {"items": doc_type_list()}
+
+
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),  # noqa: B008 — FastAPI 依赖注入的惯用写法
     knowledge_base: str = Form("documents"),
+    doc_type: str = Form(None),
     request: Request = None,
 ):
     from api.config import settings
+    from engines.doc_types import get_doc_type, resolve_doc_type
 
     doc_id = str(uuid.uuid4())[:12]
 
-    # 知识库名白名单: 防空名/路径字符 (kb 用于 LanceDB 表名 rag_<kb>)
-    if not knowledge_base or not re.fullmatch(r"[A-Za-z0-9_-]+", knowledge_base):
+    # 文档类型解析: 优先 doc_type, 其次 kb 反查, 旧默认库/非法回退 policy
+    # → 最终 kb 一定落在 RAG_KBS 内 (修复默认库 documents 孤儿库 → 检索不到的 bug)
+    doc_type = resolve_doc_type(doc_type, knowledge_base)
+    spec = get_doc_type(doc_type)
+    kb = spec.kb
+
+    # 知识库名白名单: 防空名/路径字符 (kb 用于 LanceDB 表名 rag_<kb>); 兼容旧 knowledge_base 入参
+    if knowledge_base and not re.fullmatch(r"[A-Za-z0-9_-]+", knowledge_base):
         raise HTTPException(status_code=400, detail="非法知识库名称")
 
     # RBAC: 上传目标知识库必须在 principal 授权范围内
     if request is not None:
         principal = get_principal(request)
-        if principal.allowed_kbs is not None and knowledge_base not in principal.allowed_kbs:
-            raise HTTPException(status_code=403, detail=f"该 API Key 无权写入知识库: {knowledge_base}")
+        if principal.allowed_kbs is not None and kb not in principal.allowed_kbs:
+            raise HTTPException(status_code=403, detail=f"该 API Key 无权写入知识库: {kb}")
+
+    # P1: 扩展名校验前置 — 在读入全部内容(最多 50MB)之前先拒绝非法格式, 防无效大文件拖垮内存/带宽
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if get_parser(ext) is None:
+        document_uploads_total.labels(status="rejected").inc()
+        raise HTTPException(status_code=400, detail=f"不支持的格式: {ext or '未知'}")
 
     # 大小限制: 优先按 Content-Length 头预检, 再分块读入边读边限 (防绕过头全量读入内存)
     max_bytes = settings.max_upload_mb * 1024 * 1024
@@ -81,11 +114,6 @@ async def upload_document(
             raise HTTPException(status_code=413, detail=f"文件超过大小限制 ({settings.max_upload_mb}MB)")
     content = bytes(content)
 
-    # 扩展名校验: 未知格式直接 400, 不落库
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if get_parser(ext) is None:
-        document_uploads_total.labels(status="rejected").inc()
-        raise HTTPException(status_code=400, detail=f"不支持的格式: {ext or '未知'}")
     # MIME 软校验: 与扩展名不符仅告警, 扩展名仍权威
     if file.content_type:
         expected = SUPPORTED_MIME.get(ext, set())
@@ -94,12 +122,17 @@ async def upload_document(
                 "[%s] MIME 与扩展名不符: filename=%s, content_type=%s", doc_id, file.filename, file.content_type
             )
 
+    # P1 低危: 文件名清洗 (控制字符 → 存储型 XSS 面), 截断 255 防超长
+    safe_filename = _sanitize_filename(file.filename)
+
     # 保存到 SQLite (同步 IO 卸载到线程池, 不阻塞事件循环)
     doc_store = get_document_store()
-    await asyncio.to_thread(doc_store.save, doc_id, file.filename, status="processing", knowledge_base=knowledge_base)
+    await asyncio.to_thread(
+        doc_store.save, doc_id, safe_filename, status="processing", knowledge_base=kb, doc_type=doc_type
+    )
 
     # 异步后台处理，不阻塞请求
-    background_tasks.add_task(_process_document_background, doc_id, file.filename, content, knowledge_base)
+    background_tasks.add_task(_process_document_background, doc_id, safe_filename, content, kb, doc_type)
 
     document_uploads_total.labels(status="success").inc()
     return DocumentUploadResponse(doc_id=doc_id, status="processing", estimated_time=5)
@@ -124,12 +157,16 @@ async def get_document_status(doc_id: str, request: Request = None):
             status=doc["status"],
             page_count=doc.get("page_count"),
             chunk_count=doc.get("chunk_count"),
+            doc_type=doc.get("doc_type"),
         )
     return DocumentStatusResponse(doc_id=doc_id, filename="", status="not_found", chunk_count=0)
 
 
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(page: int = 1, size: int = 20, request: Request = None):
+    # P1: size 钳制 1..100, 防 size=100000 全表查询内存 DoS
+    size = max(1, min(int(size), 100))
+    page = max(1, int(page))
     doc_store = get_document_store()
     # RBAC: 仅列出 principal 授权范围内的知识库文档
     kb_in = get_principal(request).allowed_kbs if request is not None else None
@@ -141,6 +178,7 @@ async def list_documents(page: int = 1, size: int = 20, request: Request = None)
                 filename=d["filename"],
                 status=d["status"],
                 knowledge_base=d.get("knowledge_base"),
+                doc_type=d.get("doc_type"),
             )
             for d in result["items"]
         ],
@@ -158,11 +196,17 @@ async def delete_document(doc_id: str, request: Request = None):
     # RBAC: 非授权知识库文档不可删
     if request is not None:
         principal = get_principal(request)
+        # S5: 破坏性端点要求 admin (reader 角色无权删除)
+        if not principal.is_admin():
+            raise HTTPException(status_code=403, detail="该 API Key 无删除权限 (仅 admin)")
         if (
             principal.allowed_kbs is not None
             and (doc.get("knowledge_base") or "documents") not in principal.allowed_kbs
         ):
             raise HTTPException(status_code=403, detail="该 API Key 无权删除此文档所在知识库")
+    # P1 竞态: 处理中的文档禁止删除 (后台线程可能正写入向量/BM25, 删除会产生孤儿数据或半写索引)
+    if doc.get("status") == "processing":
+        raise HTTPException(status_code=409, detail="文档正在解析中, 请稍后删除")
     kb = doc.get("knowledge_base") or "documents"
 
     try:
@@ -178,13 +222,14 @@ async def delete_document(doc_id: str, request: Request = None):
     return {"detail": "已删除", "doc_id": doc_id, "deleted": ok}
 
 
-def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: str = "documents"):
+def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: str = "documents", doc_type: str = "policy"):
     """文档处理流水线（在后台线程中运行）"""
     import os
     import tempfile
 
     from api.config import settings
-    from engines.chunking.structure_chunker import StructureChunker
+    from engines.chunking.strategies import get_chunker
+    from engines.doc_types import get_doc_type
     from engines.parsing.registry import get_parser
 
     tmp_path = None
@@ -205,7 +250,7 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: s
         if uir.tables:
             logger.warning("[%s] 解析出 %d 个表格, 表格内容当前未入库 (仅段落文本入向量库)", doc_id, len(uir.tables))
 
-        chunker = StructureChunker(max_chars=settings.chunk_max_chars, overlap=settings.chunk_overlap)
+        chunker = get_chunker(get_doc_type(doc_type), settings)
         chunks = chunker.chunk(uir)
         logger.info("[%s] 分块完成: %d chunks", doc_id, len(chunks))
 
@@ -228,8 +273,9 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: s
                 {"id": c.chunk_id, "chunk_id": c.chunk_id, "doc_id": c.doc_id, "content": c.content} for c in chunks
             ]
             get_bm25_index(kb).add_documents(bm25_docs)
-        except Exception as e:  # noqa: BLE001 — 降级边界: 向量入库失败仅记日志
-            logger.error("[%s] 向量存储失败: %s", doc_id, str(e)[:200])
+        except Exception as e:
+            logger.error("[%s] 向量/BM25 入库失败: %s", doc_id, str(e)[:200])
+            raise RuntimeError(f"向量/BM25 入库失败: {str(e)[:120]}") from e
 
         # 构建知识图谱（按库隔离）
         try:

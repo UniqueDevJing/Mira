@@ -30,7 +30,10 @@ def _normalize(turn) -> dict | None:
 
 
 def load_session(session_id: str, backend: CacheBackend | None = None) -> list[ChatTurn]:
-    """读取会话历史; 不存在/损坏返回空列表。"""
+    """读取会话历史; 不存在/损坏返回空列表。
+
+    兼容两种存储格式: 新格式 {"owner": str|None, "turns": [...]} 与旧格式 [turn, ...]。
+    """
     if not session_id:
         return []
     be = backend or get_cache_backend()
@@ -41,16 +44,37 @@ def load_session(session_id: str, backend: CacheBackend | None = None) -> list[C
         data = json.loads(raw)
     except json.JSONDecodeError:
         return []
+    turns_data = data.get("turns") if isinstance(data, dict) else data
     turns = []
-    for t in data:
+    for t in turns_data or []:
         n = _normalize(t)
         if n:
             turns.append(ChatTurn(role=n["role"], content=n["content"]))
     return turns
 
 
-def save_session(session_id: str, turns: list, backend: CacheBackend | None = None) -> None:
-    """写入会话历史(截断最近 20 轮)。turns 元素可为 ChatTurn 或 {role,content}。"""
+def session_owner(session_id: str, backend: CacheBackend | None = None) -> str | None:
+    """读取会话归属者 key_id (S6 IDOR 防护用); 旧格式/不存在返回 None (视为无归属)。"""
+    if not session_id:
+        return None
+    be = backend or get_cache_backend()
+    raw = be.get(_key(session_id))
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(data, dict):
+        return data.get("owner") or None
+    return None
+
+
+def save_session(session_id: str, turns: list, backend: CacheBackend | None = None, owner: str | None = None) -> None:
+    """写入会话历史(截断最近 20 轮)。turns 元素可为 ChatTurn 或 {role,content}。
+
+    owner: 创建者 key_id (S6 归属绑定); None = 未绑定 (旧调用方, 保持向后兼容)。
+    """
     if not session_id:
         return
     be = backend or get_cache_backend()
@@ -59,7 +83,7 @@ def save_session(session_id: str, turns: list, backend: CacheBackend | None = No
     if not trimmed:
         be.delete(_key(session_id))
         return
-    payload = json.dumps(trimmed, ensure_ascii=False)
+    payload = json.dumps({"owner": owner, "turns": trimmed}, ensure_ascii=False)
     be.set(_key(session_id), payload, SESSION_TTL_S)
 
 

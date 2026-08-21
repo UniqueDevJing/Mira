@@ -62,10 +62,12 @@ class DocumentStore:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            # 幂等迁移: 旧库缺 knowledge_base 列时补加
+            # 幂等迁移: 旧库缺 knowledge_base / doc_type 列时补加
             cols = {row[1] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
             if "knowledge_base" not in cols:
                 conn.execute("ALTER TABLE documents ADD COLUMN knowledge_base TEXT DEFAULT 'documents'")
+            if "doc_type" not in cols:
+                conn.execute("ALTER TABLE documents ADD COLUMN doc_type TEXT DEFAULT 'policy'")
             # QA 日志表 (异步写入, 用于成本/质量追踪)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS qa_logs (
@@ -105,21 +107,23 @@ class DocumentStore:
         chunk_count: int | None = None,
         error: str | None = None,
         knowledge_base: str = "documents",
+        doc_type: str = "policy",
     ):
         """保存或更新文档"""
         with self._get_conn() as conn:
             conn.execute(
                 """
-                INSERT INTO documents (doc_id, filename, status, page_count, chunk_count, error, knowledge_base)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO documents (doc_id, filename, status, page_count, chunk_count, error, knowledge_base, doc_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(doc_id) DO UPDATE SET
                     status = excluded.status,
                     page_count = excluded.page_count,
                     chunk_count = excluded.chunk_count,
                     error = excluded.error,
-                    knowledge_base = excluded.knowledge_base
+                    knowledge_base = excluded.knowledge_base,
+                    doc_type = excluded.doc_type
             """,
-                (doc_id, filename, status, page_count, chunk_count, error, knowledge_base),
+                (doc_id, filename, status, page_count, chunk_count, error, knowledge_base, doc_type),
             )
         logger.debug("文档已保存: doc_id=%s, status=%s, kb=%s", doc_id, status, knowledge_base)
 

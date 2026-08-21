@@ -7,12 +7,16 @@
 import logging
 import os
 import pickle
+import tempfile
 import threading
 from collections import defaultdict
 
 from engines.interfaces import GraphStoreInterface
 
 logger = logging.getLogger(__name__)
+
+# pickle schema 版本号: 代码演进后旧图恢复不再静默 KeyError, 加载时校验并迁移/隔离
+_GRAPH_VERSION = 1
 
 
 class GraphStore(GraphStoreInterface):
@@ -54,37 +58,50 @@ class GraphStore(GraphStoreInterface):
     def _save(self) -> None:
         """持久化图谱 (build_from_chunks 完成后调用; 不每步落盘避免大图 I/O 抖动)。
 
-        双写: (1) 本地 pickle 文件 (重启恢复, 与 BM25 对称); (2) Redis (多 worker 共享同一份,
-        首个 ingest 的 worker 写入, 其余 worker 直接加载, 省去重复 LLM 抽取 + 保证图谱一致)。
+        原子性 (S2): 持锁对内存结构做快照 → 写临时文件 → os.replace 原子替换。
+        崩溃/断电时旧文件保持完整, 不会出现"写一半即损坏 → 静默清空"。
+        双写: (1) 本地 pickle 文件 (重启恢复); (2) Redis (多 worker 共享)。
+        S3 注: Redis 整图 set 为 last-writer-wins, 多 worker 各自增量后整图覆盖会互相覆盖
+        (A 覆盖 B / B 覆盖 A)。当前单 worker 部署无碍; 多 worker 生产需改增量合并或
+        Redis 分布式锁串行化 — 已加 version 字段为后续迁移留口。
         """
-        blob = pickle.dumps(
-            {
-                "nodes": self.nodes,
-                "edges": self.edges,
-                "adj_out": dict(self.adj_out),
-                "adj_in": dict(self.adj_in),
-                "edge_keys": self._edge_keys,
-                "lower_index": self._lower_index,
-            }
-        )
-        if self._persist_path:
-            try:
-                os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
-                with open(self._persist_path, "wb") as f:
-                    f.write(blob)
-            except OSError as e:
-                logger.warning("图谱持久化写入失败: %s", str(e)[:120])
-        if self._redis is not None:
-            try:
-                self._redis.set(self._redis_key, blob)
-            except Exception as e:  # noqa: BLE001 — Redis 写入失败不阻断 (内存态仍可用)
-                logger.warning("图谱 Redis 写入失败: %s", str(e)[:120])
+        with self._lock:
+            blob = pickle.dumps(
+                {
+                    "version": _GRAPH_VERSION,
+                    "nodes": self.nodes,
+                    "edges": self.edges,
+                    "adj_out": dict(self.adj_out),
+                    "adj_in": dict(self.adj_in),
+                    "edge_keys": self._edge_keys,
+                    "lower_index": self._lower_index,
+                }
+            )
+            if self._persist_path:
+                try:
+                    os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
+                    # temp + os.replace: 原子替换, 崩溃不损坏旧文件
+                    fd, tmp = tempfile.mkstemp(
+                        dir=os.path.dirname(self._persist_path) or ".", prefix=".graph-", suffix=".tmp"
+                    )
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(blob)
+                    os.replace(tmp, self._persist_path)
+                except OSError as e:
+                    logger.warning("图谱持久化写入失败: %s", str(e)[:120])
+            if self._redis is not None:
+                try:
+                    self._redis.set(self._redis_key, blob)
+                except Exception as e:  # noqa: BLE001 — Redis 写入失败不阻断 (内存态仍可用)
+                    logger.warning("图谱 Redis 写入失败: %s", str(e)[:120])
 
     def _load(self, path: str) -> None:
-        """从 pickle 恢复图谱; 损坏则回退空图 (不阻断启动)。"""
+        """从 pickle 恢复图谱; 损坏则改名 .corrupt 隔离再回退空图 (不阻断启动, 避免每重启重读坏文件)。"""
         try:
             with open(path, "rb") as f:
                 data = pickle.load(f)
+            if data.get("version") != _GRAPH_VERSION:
+                raise ValueError(f"图谱 schema 版本不兼容: {data.get('version')} != {_GRAPH_VERSION}")
             self.nodes = data["nodes"]
             self.edges = data["edges"]
             self.adj_out = defaultdict(list, data.get("adj_out", {}))
@@ -94,6 +111,12 @@ class GraphStore(GraphStoreInterface):
             logger.info("图谱从 %s 恢复: %d 节点 %d 边", path, len(self.nodes), len(self.edges))
         except Exception as e:  # noqa: BLE001 — 持久化损坏回退空图
             logger.warning("图谱持久化加载失败, 回退空图: %s", str(e)[:120])
+            try:
+                if os.path.exists(path):
+                    os.rename(path, f"{path}.corrupt")
+                    logger.warning("损坏图谱文件已隔离: %s.corrupt", path)
+            except OSError:
+                pass
 
     def _load_redis(self) -> bool:
         """从 Redis 恢复整图 (二进制 pickle)。成功返回 True; 缺失/损坏返回 False (调用方回退文件/空图)。"""
@@ -102,6 +125,8 @@ class GraphStore(GraphStoreInterface):
             if not blob:
                 return False
             data = pickle.loads(blob)
+            if data.get("version") != _GRAPH_VERSION:
+                raise ValueError(f"图谱 schema 版本不兼容: {data.get('version')} != {_GRAPH_VERSION}")
             self.nodes = data["nodes"]
             self.edges = data["edges"]
             self.adj_out = defaultdict(list, data.get("adj_out", {}))

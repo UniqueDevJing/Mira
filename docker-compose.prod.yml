@@ -18,6 +18,11 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - HF_HUB_OFFLINE=1
       - RAG_API_KEY_ENABLED=true
+      # S7: 生产显式开启限流 (Key 泄露后防无限烧 token/CPU); 未配置 Redis 时回落内存桶
+      - RAG_RATE_LIMIT_ENABLED=1
+      - RAG_REDIS_URL=${RAG_REDIS_URL:-redis://127.0.0.1:6379/1}
+      # S4: 生产关闭 loopback 免鉴权 (反向代理场景防匿名绕过)
+      - RAG_LOOPBACK_EXEMPT=false
     # 非 root (Dockerfile 已建 uid 1000 appuser)
     user: "1000:1000"
     # 数据持久化: SQLite + 向量库 + BM25 (named volume, 不挂源码)

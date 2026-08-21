@@ -142,5 +142,8 @@ class IntentRouter:
                 return str(data.get("skill", "")).strip().lower()
         except (json.JSONDecodeError, ValueError) as e:
             logger.debug("skill JSON 解析失败, 走正则兜底: %s", str(e)[:80])
-        m = re.search(r"(service|tech|direct)", content)
-        return m.group(1) if m else None
+        # 动态匹配: 从 SKILLS 所有类型名中查找, 兼容新增文档类型
+        for skill in SKILLS:
+            if skill in content.lower():
+                return skill
+        return None

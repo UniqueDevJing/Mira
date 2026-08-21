@@ -26,6 +26,7 @@ class DocumentStatusResponse(BaseModel):
     status: DocumentStatus
     page_count: int | None = None
     chunk_count: int | None = None
+    doc_type: str | None = None
 
 
 class DocumentListItem(BaseModel):
@@ -33,6 +34,7 @@ class DocumentListItem(BaseModel):
     filename: str
     status: DocumentStatus
     knowledge_base: str | None = None
+    doc_type: str | None = None
 
 
 class DocumentListResponse(BaseModel):

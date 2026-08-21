@@ -126,6 +126,16 @@ class StructureChunker:
         return ""
 
     @staticmethod
+    def _flatten_text(uir_doc) -> str:
+        """拼接所有段落/标题文本 (条款/问答切分复用)。"""
+        return "\n".join(
+            b["content"]
+            for page in uir_doc.pages
+            for b in page["blocks"]
+            if b["type"] in ("paragraph", "title")
+        )
+
+    @staticmethod
     def _flatten_blocks(uir_doc) -> list[dict]:
         blocks = []
         for page in uir_doc.pages:

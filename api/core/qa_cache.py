@@ -25,16 +25,24 @@ class QACache:
         temperature: float,
         mode: str = "hybrid",
         history=None,
+        allowed_kbs=None,
     ) -> str:
-        """缓存键: 完整输入指纹。temperature/mode/history 计入, 尊重用户参数, 代价是缓存分片。"""
+        """缓存键: 完整输入指纹。temperature/mode/history 计入, 尊重用户参数, 代价是缓存分片。
+
+        allowed_kbs 计入键 (RBAC 作用域分片): None=全部(admin)、[]=无权限、[...]=受限子集。
+        防止受限 reader 命中 admin 权限下生成的含越权 KB 内容的缓存 (S1 越权读修复)。
+        """
         hist = [
             (getattr(t, "role", None), getattr(t, "content", None))
             if not isinstance(t, dict)
             else (t.get("role"), t.get("content"))
             for t in (history or [])
         ]
+        scope = sorted(allowed_kbs) if allowed_kbs is not None else None
         raw = json.dumps(
-            [question, skill, top_k, enable_self_retrieval, temperature, mode, hist], ensure_ascii=False, sort_keys=True
+            [question, skill, top_k, enable_self_retrieval, temperature, mode, hist, scope],
+            ensure_ascii=False,
+            sort_keys=True,
         )
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 

@@ -454,11 +454,9 @@
         <button type="button" class="sel-clear" onclick="clearFile()" aria-label="清除所选文件" title="清除所选文件"><i class="fa fa-times"></i></button>
       </div>
       <div class="kb-row">
-        <label for="kbSelect">目标知识库</label>
-        <select id="kbSelect">
-          <option value="documents">默认库</option>
-          <option value="service">客服话术库</option>
-          <option value="tech">技术文档库</option>
+        <label for="docTypeSelect">文档类型</label>
+        <select id="docTypeSelect">
+          <option value="policy">制度规范</option>
         </select>
       </div>
       <button onclick="uploadFile()" id="uploadBtn" disabled class="btn btn-primary" style="margin-top: 18px;">
@@ -583,6 +581,27 @@ if (!HAS_COMMON) {
 
 let selectedFile = null;
 let currentController = null;
+let docTypes = [];  // 文档类型列表 (由 /documents/types 填充)
+
+// 文档类型标签: type_id → 中文名 (缺失回退原 id)
+function docTypeLabel(id) {
+  const t = docTypes.find(x => x.type_id === id);
+  return t ? t.label : (id || '未知');
+}
+
+// 拉取文档类型下拉数据, 失败保留静态兜底项
+async function loadDocTypes() {
+  try {
+    const r = await apiFetch(API + '/documents/types', {headers: authHeaders()});
+    const data = await r.json();
+    docTypes = data.items || [];
+    if (docTypes.length) {
+      const sel = document.getElementById('docTypeSelect');
+      sel.innerHTML = docTypes.map(t =>
+        `<option value="${escapeHtml(t.type_id)}">${escapeHtml(t.label)}</option>`).join('');
+    }
+  } catch (e) { /* 保留静态兜底项, 不影响上传 */ }
+}
 
 // 初始化
 (async () => {
@@ -590,6 +609,7 @@ let currentController = null;
   try { const r = await fetch('/health', {headers: authHeaders()});
     document.getElementById('apiStatus').innerHTML = '<span class="dot dot-ok"></span> API 在线';
   } catch(e) { document.getElementById('apiStatus').innerHTML = '<span class="dot dot-err"></span> API 离线'; }
+  loadDocTypes();
   loadEvalSummary();
 })();
 
@@ -630,16 +650,19 @@ async function uploadFile() {
   if (!selectedFile) { alert('请先选择要上传的文件'); return; }
   const btn = document.getElementById('uploadBtn');
   btn.disabled = true; btn.innerHTML = ICON('spinner', true) + ' 解析中...';
+  const docType = document.getElementById('docTypeSelect').value;
   const fd = new FormData(); fd.append('file', selectedFile);
-  fd.append('knowledge_base', document.getElementById('kbSelect').value);
+  fd.append('doc_type', docType);
   try {
     const r = await apiFetch(API+'/documents/upload', {method:'POST',body:fd, headers: authHeaders()});
     const data = await r.json();
+    const typeLabel = escapeHtml(docTypeLabel(docType));
     document.getElementById('uploadResult').classList.remove('hidden');
     document.getElementById('uploadResult').innerHTML = `
       <div class="alert alert-success">
         <p><strong>${ICON('check-circle')} 上传成功</strong></p>
-        <p style="margin-top:6px;font-size:13px;">文档ID: <code>${escapeHtml(data.doc_id)}</code></p>
+        <p style="margin-top:6px;font-size:13px;">文档类型: <span class="chip chip-info">${typeLabel}</span></p>
+        <p style="font-size:13px;">文档ID: <code>${escapeHtml(data.doc_id)}</code></p>
         <p style="font-size:13px;">状态: ${escapeHtml(data.status)}</p>
       </div>`;
     clearFile();
@@ -789,7 +812,11 @@ async function askQuestion() {
   const ansMeta = ansBox.querySelector('.meta');
   const ansSteps = ansBox.querySelector('.ans-steps');
   const sp = document.getElementById('sourcesPanel');
-  const skillMap = {service:'客服库', tech:'技术库', direct:'直接回答'};
+  const skillMap = {
+    policy:'制度库', contract:'合同库', product:'产品库', service:'客服库', tech:'技术库',
+    finance:'财务库', hr:'人事库', marketing:'营销库', meeting:'会议库', training:'培训库',
+    direct:'直接回答'
+  };
 
   // AbortController: 支持"停止生成"
   const controller = new AbortController();
@@ -900,6 +927,7 @@ async function refreshDocList() {
         <div class="doc-left">
           <span class="doc-status ${d.status==='ready'?'ready':'wait'}"></span>
           <span class="doc-name">${escapeHtml(d.filename)}</span>
+          <span class="chip chip-info" style="font-size:11px">${escapeHtml(docTypeLabel(d.doc_type))}</span>
           <span class="doc-badge ${d.status==='ready'?'ready':'wait'}">${d.status==='ready'?'就绪':(d.status==='empty'?'空文档':escapeHtml(d.status))}</span>
         </div>
         <div class="doc-right">

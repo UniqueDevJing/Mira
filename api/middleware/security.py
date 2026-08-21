@@ -26,11 +26,17 @@ def _is_exempt(path: str) -> bool:
 
 
 def _is_local_loopback(request: Request) -> bool:
-    """本机直连 (127.0.0.1) 免鉴权, 局域网/公网仍需 Key。
+    """本机直连 (127.0.0.1) 免鉴权 — 显式开关 (RAG_LOOPBACK_EXEMPT), 生产默认关 (S4)。
 
-    隧道 (cloudflared) 转发到本机时 client 也是 127.0.0.1, 但带
-    Cf-Connecting-Ip / X-Forwarded-For 头 → 视为外部请求, 不豁免。
+    安全背景: 部署在 nginx/Caddy 等反向代理后, 若代理未设转发头 (proxy_pass 默认不带 XFF),
+    所有外部请求会被当成 loopback 直连 → 全 API 匿名 admin 绕过 (含 DELETE 端点)。
+    因此 loopback 豁免必须显式开启; 且即便开启, 带 Cf-Connecting-Ip / X-Forwarded-For 头的
+    请求仍视为外部 (隧道/代理转发场景), 不豁免。
     """
+    from api.config import settings
+
+    if not settings.loopback_exempt:
+        return False
     host = request.client.host if request.client else ""
     has_forward_header = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
     return host in ("127.0.0.1", "::1", "localhost") and not has_forward_header

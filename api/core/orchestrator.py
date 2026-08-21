@@ -60,6 +60,7 @@ from engines.retrieval.query_preprocessor import preprocess_query
 from engines.retrieval.query_rewriter import QueryRewriter
 from engines.retrieval.self_retrieval import SelfRetrieval
 from engines.router.intent_router import IntentRouter, RoutingResult
+from engines.doc_types import RAG_KBS
 from engines.router.routing_rules import SKILLS
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,21 @@ def _faithfulness_guard(answer: str, docs: list[dict]) -> float:
         except Exception:  # noqa: BLE001 — 嵌入不可用时降级为词重合护栏
             embed_fn = None
     return _faithfulness(answer, contexts, embed_fn=embed_fn)
+
+
+async def _guard_faithfulness(answer: str, docs: list[dict]) -> float:
+    """护栏求值卸载到线程池 (embedding 推理可能阻塞事件循环), wait_for 限时。
+
+    超时/异常视为放行 (返回 1.0), 不因护栏自身故障阻断回答。
+    """
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_faithfulness_guard, answer, docs), timeout=2.0)
+    except TimeoutError:
+        logger.warning("忠实度护栏求值超时, 放行")
+        return 1.0
+    except Exception as e:  # noqa: BLE001
+        logger.warning("忠实度护栏求值失败, 放行: %s", str(e)[:100])
+        return 1.0
 
 
 def _record_qa_quality(result: dict) -> None:
@@ -121,7 +137,6 @@ RAG_SYSTEM_PROMPT = """你是严谨的知识库助手，只能依据参考文档
 5. 回答控制在 300 字以内
 6. 若用户问题指代了前文（如"它""这个""那怎么办"），结合「对话历史」理解指代对象，不要当作全新孤立问题"""
 
-RAG_KBS = [s["kb"] for s in SKILLS.values() if s["kb"]]  # ["service", "tech"]
 
 
 def _candidate_kbs(allowed_kbs: list[str] | None) -> list[str]:
@@ -152,10 +167,20 @@ def _history_to_messages(history) -> list[dict]:
     return out
 
 
-def _chat_messages(context: str, question: str, history=None) -> list[dict]:
-    """组装 RAG 生成用 messages: system + 历史 + 当前(参考文档+问题)。"""
+def _chat_messages(context: str, question: str, history=None, kb: str | None = None) -> list[dict]:
+    """组装 RAG 生成用 messages: system + 历史 + 当前(参考文档+问题)。
+
+    kb 非空时拼接该文档类型的 prompt_hint, 实现按类型的 skill 差异化 (语气/关注点)。
+    """
+    system = RAG_SYSTEM_PROMPT
+    if kb:
+        from engines.doc_types import kb_to_doc_type
+
+        spec = kb_to_doc_type(kb)
+        if spec and spec.prompt_hint:
+            system = system + "\n\n【文档类型提示】" + spec.prompt_hint
     return (
-        [{"role": "system", "content": RAG_SYSTEM_PROMPT}]
+        [{"role": "system", "content": system}]
         + _history_to_messages(history)
         + [{"role": "user", "content": f"参考文档：\n{context}\n\n问题：{question}"}]
     )
@@ -213,10 +238,12 @@ async def ask(
     history=None,
     session_id=None,
     allowed_kbs=None,
+    owner: str | None = None,
 ) -> dict:
     """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。
 
     allowed_kbs: principal 可访问的知识库集合(None=不限制); 自动路由命中非授权库时抛 KBForbiddenError。
+    owner: session 归属者 key_id (S6), 会话历史写入时绑定, 供 IDOR 校验。
     """
     start = time.time()
 
@@ -226,31 +253,37 @@ async def ask(
     candidate_kbs = _candidate_kbs(allowed_kbs)
 
     # QA 结果缓存: 相同输入指纹命中则跳过路由+检索+LLM, 直接返回缓存
+    # S1 安全: 缓存键含 allowed_kbs 作用域(RBAC 分片), 命中后仍做 kb_id 复检, 防越权读
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history)
+        cache.make_key(
+            question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history, allowed_kbs
+        )
         if cache is not None
         else None
     )
     if cache_key is not None:
         hit = cache.get(cache_key)
         if hit is not None:
-            qa_cache_hits_total.inc()
-            qa_latency_seconds.observe(time.time() - start)
-            result = copy.deepcopy(hit)  # 深拷贝: 缓存条目含嵌套 dict, 浅拷贝修改会污染缓存
-            result["cache_hit"] = True
-            qa_requests_total.labels(mode=mode, status="cache_hit").inc()
-            # 会话持久化: 缓存命中也记录本轮(刷新/换设备不丢上下文); 否则重复问题会丢失多轮链路
-            if session_id:
-                save_session(
-                    session_id,
-                    list(effective_history)
-                    + [
-                        ChatTurn(role="user", content=question),
-                        ChatTurn(role="assistant", content=result.get("answer", "")),
-                    ],
-                )
-            return result
+            hit_kb = hit.get("kb_id")
+            if allowed_kbs is None or hit_kb is None or hit_kb in set(allowed_kbs):
+                qa_cache_hits_total.inc()
+                qa_latency_seconds.observe(time.time() - start)
+                result = copy.deepcopy(hit)  # 深拷贝: 缓存条目含嵌套 dict, 浅拷贝修改会污染缓存
+                result["cache_hit"] = True
+                qa_requests_total.labels(mode=mode, status="cache_hit").inc()
+                # 会话持久化: 缓存命中也记录本轮(刷新/换设备不丢上下文); 否则重复问题会丢失多轮链路
+                if session_id:
+                    save_session(
+                        session_id,
+                        list(effective_history)
+                        + [
+                            ChatTurn(role="user", content=question),
+                            ChatTurn(role="assistant", content=result.get("answer", "")),
+                        ],
+                        owner=owner,
+                    )
+                return result
         qa_cache_misses_total.inc()
 
     llm = get_llm_client()
@@ -301,6 +334,7 @@ async def ask(
             session_id,
             list(effective_history)
             + [ChatTurn(role="user", content=question), ChatTurn(role="assistant", content=result.get("answer", ""))],
+            owner=owner,
         )
 
     _record_qa_quality(result)
@@ -555,7 +589,10 @@ async def _retrieve_self(question: str, routing: RoutingResult, top_k: int, star
     except Exception as e:  # noqa: BLE001 — 降级边界: 失败回退单轮检索 (L2)
         logger.warning("[%s] Self-Retrieval 失败, 降级单轮 (L2): %s", kb, str(e)[:120])
         degradation = max(degradation, 2)
-        docs, _ = _run_once(question, top_k)
+        # 同步检索同样卸载到线程池并限时, 防止阻塞事件循环
+        docs, _ = await asyncio.wait_for(
+            asyncio.to_thread(_run_once, question, top_k), timeout=_remaining(start, 2.0)
+        )
         rounds = 1
         rewritten = []
 
@@ -615,7 +652,7 @@ async def _skill_rag(
         graph_txt = "\n".join(f"- {g}" for g in graph_ctx["graph_context"][:8])
         context = f"{context}\n\n图谱实体关系:\n{graph_txt}"
 
-    answer, token_usage, llm_ms, llm_ok = await _generate(question, context, llm, start, temperature, history)
+    answer, token_usage, llm_ms, llm_ok = await _generate(question, context, llm, start, temperature, history, kb=kb)
     track_llm_latency.observe(llm_ms / 1000)
     if not llm_ok:
         degradation = max(degradation, 3)
@@ -627,7 +664,7 @@ async def _skill_rag(
             answer = "未在知识库中找到相关信息，请先上传文档。"
     else:
         # 忠实度护栏: 生成内容与检索上下文词重合过低 → 判定无依据, 拒答防编造
-        if docs and _faithfulness_guard(answer, docs) < settings.fidelity_threshold:
+        if docs and await _guard_faithfulness(answer, docs) < settings.fidelity_threshold:
             logger.warning("[%s] 忠实度护栏触发: 答案与上下文重合 < %.2f, 改为拒答", kb, settings.fidelity_threshold)
             degradation = max(degradation, 3)
             answer = (
@@ -667,7 +704,7 @@ async def _skill_rag(
 
 
 async def _generate(
-    question: str, context: str, llm: "LLMClient | SyncLLMClient", start: float, temperature: float = 0.1, history=None
+    question: str, context: str, llm: "LLMClient | SyncLLMClient", start: float, temperature: float = 0.1, history=None, kb: str | None = None
 ):
     """调用 LLM 生成答案。返回 (answer, token_usage_dict|None, ms, ok)。"""
     t0 = time.time()
@@ -676,7 +713,7 @@ async def _generate(
     try:
         resp = await asyncio.wait_for(
             llm.chat(
-                messages=_chat_messages(context, question, history),
+                messages=_chat_messages(context, question, history, kb=kb),
                 temperature=temperature,
                 max_tokens=2000,
             ),
@@ -740,6 +777,7 @@ async def ask_stream(
     history=None,
     session_id=None,
     allowed_kbs=None,
+    owner: str | None = None,
 ):
     """流式编排入口: 缓存命中重放 → 路由 → 检索 → LLM 逐块产出。yield SSE 事件 dict。
 
@@ -758,29 +796,34 @@ async def ask_stream(
 
     cache = get_qa_cache() if settings.qa_cache_enabled else None
     cache_key = (
-        cache.make_key(question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history)
+        cache.make_key(
+            question, skill, top_k, enable_self_retrieval, temperature, mode, effective_history, allowed_kbs
+        )
         if cache is not None
         else None
     )
     if cache_key is not None:
         hit = cache.get(cache_key)
         if hit is not None:
-            qa_cache_hits_total.inc()
-            qa_latency_seconds.observe(time.time() - start)
-            qa_requests_total.labels(mode=mode, status="cache_hit").inc()
-            async for ev in _replay_cache_stream(hit):
-                yield ev
-            # 会话持久化: 缓存命中也记录本轮(与 ask() 非流式路径保持一致)
-            if session_id:
-                save_session(
-                    session_id,
-                    list(effective_history)
-                    + [
-                        ChatTurn(role="user", content=question),
-                        ChatTurn(role="assistant", content=hit.get("answer", "")),
-                    ],
-                )
-            return
+            hit_kb = hit.get("kb_id")
+            if allowed_kbs is None or hit_kb is None or hit_kb in set(allowed_kbs):
+                qa_cache_hits_total.inc()
+                qa_latency_seconds.observe(time.time() - start)
+                qa_requests_total.labels(mode=mode, status="cache_hit").inc()
+                async for ev in _replay_cache_stream(hit):
+                    yield ev
+                # 会话持久化: 缓存命中也记录本轮(与 ask() 非流式路径保持一致)
+                if session_id:
+                    save_session(
+                        session_id,
+                        list(effective_history)
+                        + [
+                            ChatTurn(role="user", content=question),
+                            ChatTurn(role="assistant", content=hit.get("answer", "")),
+                        ],
+                        owner=owner,
+                    )
+                return
         qa_cache_misses_total.inc()
 
     llm = get_llm_client()
@@ -844,6 +887,7 @@ async def ask_stream(
                         ChatTurn(role="user", content=question),
                         ChatTurn(role="assistant", content=cached.get("answer", "")),
                     ],
+                    owner=owner,
                 )
         yield ev
 
@@ -936,7 +980,7 @@ async def _stream_rag(
     # 流式 LLM 生成
     gen, r = _run_stream_llm(
         llm,
-        messages=_chat_messages(context, question, history),
+        messages=_chat_messages(context, question, history, kb=routing.kb),
         temperature=temperature,
         max_tokens=2000,
         start=start,
@@ -955,7 +999,7 @@ async def _stream_rag(
             fallback = "未在知识库中找到相关信息，请先上传文档。"
         answer = fallback
         yield {"type": "delta", "content": fallback}
-    elif docs and _faithfulness_guard(answer, docs) < settings.fidelity_threshold:
+    elif docs and await _guard_faithfulness(answer, docs) < settings.fidelity_threshold:
         # 忠实度护栏 (流式): 答案已流式发送, 无法撤回, 追加拒答提示 + 相关片段
         logger.warning("[%s] 流式忠实度护栏触发: 答案与上下文重合 < %.2f", routing.kb, settings.fidelity_threshold)
         degradation = max(degradation, 3)
@@ -1161,8 +1205,16 @@ async def _cross_kb_fallback(
     # None=全部(RBAC 未限制); []=明确无权访问任何库 → 空集, 不可回退为全部(否则越权)
     scope = candidate_kbs if candidate_kbs is not None else RAG_KBS
     siblings = [k for k in scope if k != current_kb]
-    # 跳过空库（BM25 无文档 → 向量大概率也空, 省预算）
-    non_empty = [k for k in siblings if len(get_bm25_index(k)) > 0]
+    # 跳过空库（BM25 无文档 → 向量大概率也空, 省预算）; get_bm25_index 惰性构建可能耗时, 卸载线程池
+    async def _is_non_empty(k: str) -> bool:
+        try:
+            return await asyncio.to_thread(lambda: len(get_bm25_index(k)) > 0)
+        except Exception as e:  # noqa: BLE001 — 单库异常按空库处理
+            logger.warning("跨库 %s 空库探测失败: %s", k, str(e)[:100])
+            return False
+
+    flags = await asyncio.gather(*[_is_non_empty(k) for k in siblings])
+    non_empty = [k for k, ok in zip(siblings, flags) if ok]
     if not non_empty:
         return fused, []
 
