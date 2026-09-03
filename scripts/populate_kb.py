@@ -281,10 +281,8 @@ Cross-Encoder（bge-reranker-base）对融合候选池做精细重排。默认�
 
 
 def main():
-    from api.core.embedder import get_embedder
-
     from api.config import settings
-    from api.state import get_bm25_index, get_vector_store
+    from api.state import get_bm25_index, get_embedder, get_vector_store
     from engines.chunking.strategies import get_chunker
     from engines.doc_types import get_doc_type
     from engines.parsing.txt_parser import TxtParser

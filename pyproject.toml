@@ -46,7 +46,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
     "black>=24.10.0",
-    "ruff>=0.8.0",
+    "ruff==0.16.2",
 ]
 
 [tool.pytest.ini_options]
@@ -63,6 +63,8 @@ markers = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+# 规则集锁定策略: 0.16.2 默认规则集即当前门禁基线 (显式 select=["E7","E9","F","I","RUF"]
+# 会新暴露 584 项历史违规, 需专项清理后再收紧); 行为一致性由 dev 依赖钉死 ruff==0.16.2 保证。
 
 # 覆盖率门禁: 质量红线 (CI 跑 `pytest --cov ... --cov-fail-under=80` 时生效)。
 # source 限定 api/engines, omit 排除测试自身, 避免"测自己"虚高。

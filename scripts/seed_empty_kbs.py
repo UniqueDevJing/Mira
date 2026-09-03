@@ -1199,6 +1199,7 @@ def main():
             only = [x.strip() for x in a.split("=", 1)[1].split(",")]
 
     from api.config import settings
+    from api.core.document_store import get_document_store
     from api.state import get_bm25_index, get_embedder, get_vector_store
     from engines.chunking.strategies import get_chunker
     from engines.doc_types import get_doc_type
@@ -1262,6 +1263,16 @@ def main():
             ]
             get_bm25_index(kb).remove_doc(doc_id)
             get_bm25_index(kb).add_documents(bm25_docs)
+
+            # 同步登记进文档库 (documents.db), 保证管理端文档列表与向量库一致
+            get_document_store().save(
+                doc_id=doc_id,
+                filename=title + ".txt",
+                status="ready",
+                chunk_count=len(chunks),
+                knowledge_base=kb,
+                doc_type=doc_data["doc_type"],
+            )
 
             state[key] = content_hash
             uploaded.append({"id": doc_id, "title": title, "kb": kb, "chunks": len(chunks)})
