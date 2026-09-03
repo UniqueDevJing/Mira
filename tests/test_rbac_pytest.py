@@ -10,6 +10,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+import api.core.skills as skills_mod
 from api.core import auth as auth_mod
 from api.core.auth import KBForbiddenError, Principal
 from api.core.orchestrator import _candidate_kbs
@@ -81,12 +82,13 @@ def test_ask_raises_forbidden_on_disallowed_kb(monkeypatch):
     async def _fake_route(q, skill, llm, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
-        return RoutingResult("tech", "tech", 1.0, "manual"), 1.0
+        r = RoutingResult("tech", "tech", 1.0, "manual")
+        return r, [r], 1.0
 
     async def _go():
-        monkeypatch.setattr(oc, "_route", _fake_route)
-        monkeypatch.setattr(oc, "load_session", lambda sid: [])
-        monkeypatch.setattr(oc, "save_session", lambda *a, **k: None)
+        monkeypatch.setattr(skills_mod, "_route", _fake_route)
+        monkeypatch.setattr(skills_mod, "load_session", lambda sid: [])
+        monkeypatch.setattr(skills_mod, "save_session", lambda *a, **k: None)
         with pytest.raises(KBForbiddenError):
             await oc.ask("hi", allowed_kbs=["service"])
 
@@ -99,12 +101,13 @@ def test_ask_raises_forbidden_on_empty_allowed_kbs(monkeypatch):
     async def _fake_route(q, skill, llm, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
-        return RoutingResult("tech", "tech", 1.0, "manual"), 1.0
+        r = RoutingResult("tech", "tech", 1.0, "manual")
+        return r, [r], 1.0
 
     async def _go():
-        monkeypatch.setattr(oc, "_route", _fake_route)
-        monkeypatch.setattr(oc, "load_session", lambda sid: [])
-        monkeypatch.setattr(oc, "save_session", lambda *a, **k: None)
+        monkeypatch.setattr(skills_mod, "_route", _fake_route)
+        monkeypatch.setattr(skills_mod, "load_session", lambda sid: [])
+        monkeypatch.setattr(skills_mod, "save_session", lambda *a, **k: None)
         # 空 allowed_kbs = 无权访问任何库, 必须 403, 绝不能退化为可查全部
         with pytest.raises(KBForbiddenError):
             await oc.ask("hi", allowed_kbs=[])

@@ -116,13 +116,17 @@ def test_recursive_splitter_applies_overlap():
 
 
 def test_chunk_long_paragraph_hard_split():
-    # 无分隔符的超长文本 → 硬切为多个 <= max_chars 的块
+    # 无分隔符的超长文本 → 硬切为多个 <= max_chars 的 child 块 + 1 个 parent(整段大上下文)
     long_text = "x" * 2000
     doc = _uir([_block("paragraph", long_text)])
     chunks = StructureChunker(max_chars=800, overlap=0).chunk(doc)
-    assert len(chunks) > 1
-    for c in chunks:
+    children = [c for c in chunks if not c.metadata.get("is_parent")]
+    parents = [c for c in chunks if c.metadata.get("is_parent")]
+    assert len(children) > 1
+    for c in children:
         assert len(c.content) <= 800
+    # parent 为整段原文(超 max_chars 属正常, 它是大上下文)
+    assert len(parents) == 1 and len(parents[0].content) == 2000
 
 
 def test_chunk_heading_chain_tracks_levels():

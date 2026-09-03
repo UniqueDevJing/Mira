@@ -2,7 +2,9 @@
 
 替代原 PaddleOCR: paddlepaddle 不支持 Python 3.14, 且 2.x→3.x API 断裂。
 RapidOCR 纯 onnxruntime CPU 底座, Py 版本兼容好, 中文识别精度相当。
-"""
+
+可选依赖保护: rapidocr_onnxruntime 缺失时模块仍可导入 (class 存在但调用抛 ImportError),
+避免 CI/裸环境因缺包而 crash."""
 
 import hashlib
 import logging
@@ -11,9 +13,27 @@ from pathlib import Path
 
 import fitz
 import numpy as np
-from rapidocr_onnxruntime import RapidOCR
 
 logger = logging.getLogger(__name__)
+
+# 延迟导入 RapidOCR — 避免在非 venv 环境 (CI/系统 python) 下模块级导入失败.
+_RapidOCR_cls = None
+
+
+def _ensure_rapidocr():
+    """首次使用时惰性加载 RapidOCR 类, 捕获 ImportError 转为 RuntimeError. """
+    global _RapidOCR_cls
+    if _RapidOCR_cls is not None:
+        return _RapidOCR_cls
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+        _RapidOCR_cls = RapidOCR
+    except ImportError as e:
+        raise RuntimeError(
+            "rapidocr_onnxruntime is required for OCR but not installed. "
+            "Install with: pip install rapidocr_onnxruntime"
+        ) from e
+    return _RapidOCR_cls
 
 # 模块级单例: onnxruntime 会话加载耗时数百 ms~秒级, 每文档重建浪费
 # (原实现每 OCRProcessor 实例新建会话)。onnxruntime session 并发推理线程安全。
@@ -21,13 +41,14 @@ _ocr_instance = None
 _ocr_lock = threading.Lock()
 
 
-def _get_ocr() -> RapidOCR:
+def _get_ocr():
     global _ocr_instance
     if _ocr_instance is None:
         with _ocr_lock:  # 双重检查: 并发首请求不重复实例化 (会话初始化数百 ms~秒级)
             if _ocr_instance is None:
+                cls = _ensure_rapidocr()
                 logger.info("RapidOCR 初始化: CPU 模式 (模块级单例)")
-                _ocr_instance = RapidOCR()
+                _ocr_instance = cls()
     return _ocr_instance
 
 

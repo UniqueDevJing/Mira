@@ -9,7 +9,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from api.core import orchestrator
+import api.core.skills as skills_mod
 from api.main import app
 
 client = TestClient(app)
@@ -38,7 +38,7 @@ class FakeLLM:
 
 
 def _patch_llm(monkeypatch, fake):
-    monkeypatch.setattr(orchestrator, "get_llm_client", lambda: fake)
+    monkeypatch.setattr(skills_mod, "get_llm_client", lambda: fake)
 
 
 def _collect_events(resp):
@@ -47,7 +47,7 @@ def _collect_events(resp):
     for block in resp.text.split("\n\n"):
         if not block.strip():
             continue
-        data_line = [l for l in block.split("\n") if l.startswith("data:")]
+        data_line = [ln for ln in block.split("\n") if ln.startswith("data:")]
         if data_line:
             events.append(json.loads(data_line[0][5:].strip()))
     return events
@@ -97,12 +97,12 @@ def test_stream_llm_error_falls_back(monkeypatch):
 
 
 def test_stream_rule_routing(monkeypatch):
-    """未指定 skill 时走规则路由 → service。"""
+    """未指定 skill 时走规则路由 → policy (退换货属制度; 见 test_rule_route_refund_goes_to_policy)。"""
     _patch_llm(monkeypatch, FakeLLM())
     r = client.post("/api/v1/qa/ask/stream", json={"question": "退货流程是什么"})
     events = _collect_events(r)
     assert events[0]["type"] == "meta"
-    assert events[0]["skill"] == "service"
+    assert events[0]["skill"] == "policy"
 
 
 def test_json_ask_still_works(monkeypatch):

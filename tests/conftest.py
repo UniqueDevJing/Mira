@@ -17,6 +17,10 @@ os.environ.pop("RAG_API_KEY", None)
 # QA 结果缓存默认关 — 缓存会让"同问题多次请求期望不同行为"的测试串扰 (如 LLM 失败兜底)
 # 缓存行为由 tests/test_qa_cache_pytest.py 显式开启验证
 os.environ["RAG_QA_CACHE_ENABLED"] = "false"
+# CORS 默认允许前端本地 origin, 与 tests/test_api_pytest.py::TestCORS 的 localhost:3000 preflight 期望一致。
+# 项目 .env 可能配生产 origin (如 https://uniquejing.top) 覆盖默认值, setdefault 保证测试会话走 dev origin
+# (env 变量优先级高于 .env, 且本文件在 app 导入前设置, 因此 CORSMiddleware 构造时读到的是 dev origin)。
+os.environ.setdefault("RAG_CORS_ORIGINS", '["http://localhost:3000"]')
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -38,6 +42,38 @@ def _isolate_storage(tmp_path_factory):
     state._vector_map.clear()
     state._graph_map.clear()
     state._bm25_map.clear()
+    state._reset_mounted_kbs()  # 已挂载 KB 探测缓存按 vector_uri 隔离, 切目录后必须失效
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_state_per_test(tmp_path_factory):
+    """每个测试独立存储, 防止跨测试 KB/BM25/文档库状态泄漏。
+
+    例如某测试上传文档写入共享 LanceDB, 若不清空, 后续测试检索会命中
+    该残留文档; 置信度护栏因此误拒答, 造成测试顺序相关的偶发失败。
+    通过每测试分配全新 vector_uri 与数据目录 + 清空单例 map 彻底隔离。
+    """
+    from api import state
+    from api.config import settings
+    from api.core import document_store as ds
+
+    fresh_vec = tmp_path_factory.mktemp("vec")
+    settings.vector_uri = str(fresh_vec)
+    fresh_data = tmp_path_factory.mktemp("data")
+    state._DATA_DIR = fresh_data
+    ds.DEFAULT_DB_PATH = str(fresh_data / "documents.db")
+    ds._document_store = None
+    state._vector_map.clear()
+    state._graph_map.clear()
+    state._bm25_map.clear()
+    state._reset_mounted_kbs()  # 每测试全新 vector_uri, 失效上一测试的挂载探测缓存
+    # 认证/密钥状态每测试复位: 前置认证测试 (test_api/test_rbac) 用 os.environ 或
+    # monkeypatch 临时开启 RAG_API_KEY_ENABLED/RAG_API_KEY, 若泄漏到后续测试,
+    # 会让未带 Key 的 TestClient 命中 "启用+无 Key -> 401", 造成顺序相关的假性失败。
+    # 清掉后回落 settings.api_key_enabled(默认 False), 每个测试都从"认证关闭"基线开始。
+    os.environ.pop("RAG_API_KEY_ENABLED", None)
+    os.environ.pop("RAG_API_KEY", None)
     yield
 
 

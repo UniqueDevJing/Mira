@@ -29,7 +29,41 @@ class HybridRetriever(RetrieverInterface):
         if self.reranker and docs:
             docs = self.reranker.rerank(query, docs, top_k)
 
-        return {"documents": docs[:top_k], "graph_context": graph_context}
+        docs = self._expand_parents(docs[:top_k])
+        result = {"documents": docs, "graph_context": graph_context}
+        # 流式 defer 路径: fused 也会进 _build_context, 一并展开父块
+        if "fused" in result:
+            result["fused"] = self._expand_parents(result["fused"])
+        return result
+
+    def _expand_parents(self, docs: list[dict]) -> list[dict]:
+        """父子文档机制: 检索命中的是子块(小、精确), 但回给 LLM 的是父块(大上下文)。
+
+        子块 metadata.parent_id 指向父块; 此处按 parent_id 批量取父块内容,
+        写入 doc["parent_content"] (与子块 content 不同时才写, 避免冗余)。
+        orchestrator._build_context 会优先用 parent_content 组装 LLM 上下文,
+        来源面板仍显示子块片段(精确引用)。无 vector_store/无父块时原样返回。
+        """
+        if not self.vector_store:
+            return docs
+        parent_ids = [d.get("parent_id") for d in docs if d.get("parent_id")]
+        if not parent_ids:
+            return docs
+        try:
+            rows = self.vector_store.get_by_ids(parent_ids)
+        except Exception as e:  # noqa: BLE001 — 父块查询失败不阻断检索
+            logger.debug("展开父块失败(降级为子块内容): %s", str(e)[:120])
+            return docs
+        by_id = {r.get("id"): r for r in rows if r.get("id")}
+        for d in docs:
+            pid = d.get("parent_id")
+            if not pid or pid not in by_id:
+                continue
+            pc = by_id[pid].get("content", "") or ""
+            child = d.get("content", "")
+            if pc and pc != child:
+                d["parent_content"] = pc
+        return docs
 
     def _vector_retrieve(self, query: str, top_k: int) -> list[dict]:
         if self.embedder and self.vector_store:

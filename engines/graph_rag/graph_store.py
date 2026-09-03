@@ -1,22 +1,95 @@
 """知识图谱存储 — 内存版（Phase 2 开发用，生产切 Neo4j）。
 
-持久化: persist_path 指定时, build_from_chunks 完成后落盘 pickle, 进程重启不丢图
-(与 BM25 的 data/bm25_<kb>.pkl 对称)。默认 persist_path=None 保持纯内存 (行为不变)。
+持久化: persist_path 指定时, build_from_chunks 完成后落盘 (JSON + HMAC 信封), 进程重启不丢图;
+Redis 共享后端则写整图到 Redis (同样 JSON + HMAC)。默认 persist_path=None 保持纯内存 (行为不变)。
+
+安全: 彻底弃用 pickle —— 旧 pickle 文件/Redis blob 因格式不兼容会被安全隔离 (.corrupt) 或回退空图,
+绝不会对不可信字节执行 unpickle (消除反序列化 RCE)。写入内容经 HMAC-SHA256 签名, 加载前先验签,
+防止不可信 Redis/文件写入注入 (密钥来自 RAG_GRAPH_HMAC_SECRET 配置)。
 """
 
+import hashlib
+import hmac
+import json
 import logging
 import os
-import pickle
 import tempfile
 import threading
 from collections import defaultdict
 
+from api.config import settings
 from engines.interfaces import GraphStoreInterface
 
 logger = logging.getLogger(__name__)
 
-# pickle schema 版本号: 代码演进后旧图恢复不再静默 KeyError, 加载时校验并迁移/隔离
+# 序列化信封版本号: 格式已不再是 pickle; 旧 pickle 文件/Redis blob 因信封校验失败被安全隔离/回退。
 _GRAPH_VERSION = 1
+
+# HMAC 完整性校验: 防不可信 Redis/文件写入导致 RCE (pickle 痛点)。
+# 密钥来源 (按优先级): 1) 配置项 RAG_GRAPH_HMAC_SECRET  2) 环境变量同款  3) 进程内随机 32 字节 (仅防外部 RCE, 多 worker 共享需显式配置)
+_HMAC_SECRET_ENV = "RAG_GRAPH_HMAC_SECRET"
+_PROC_HMAC_KEY: bytes | None = None
+_HMAC_WARNED = False
+
+
+def _hmac_key() -> bytes:
+    global _PROC_HMAC_KEY, _HMAC_WARNED
+    secret = (getattr(settings, "graph_hmac_secret", "") or "").strip()
+    if secret:
+        return secret.encode("utf-8")
+    secret = (os.environ.get(_HMAC_SECRET_ENV, "") or "").strip()
+    if secret:
+        return secret.encode("utf-8")
+    if _PROC_HMAC_KEY is None:
+        _PROC_HMAC_KEY = os.urandom(32)
+        if not _HMAC_WARNED:
+            _HMAC_WARNED = True
+            logger.warning(
+                "GraphStore HMAC 密钥未配置(%s), 使用进程内随机密钥: 可防外部 RCE, "
+                "但多 worker 经 Redis 共享整图会失败(各进程自签名)。生产请设置 %s。",
+                _HMAC_SECRET_ENV, _HMAC_SECRET_ENV,
+            )
+    return _PROC_HMAC_KEY
+
+
+def _seal(body: bytes) -> bytes:
+    """对明文 JSON 字节加 HMAC-SHA256 信封: '<hex_sig>|<body>'。"""
+    sig = hmac.new(_hmac_key(), body, hashlib.sha256).hexdigest().encode("ascii")
+    return sig + b"|" + body
+
+
+def _unseal(blob: bytes) -> dict:
+    """验签 + JSON 解析。任何失败(篡改/密钥不符/编码错/JSON 错/版本错)都抛异常, 调用方据以隔离/回退。"""
+    if not blob:
+        raise ValueError("空 blob")
+    text = blob.decode("utf-8", "strict")
+    idx = text.find("|")
+    if idx <= 0:
+        raise ValueError("缺少 HMAC 信封前缀")
+    sig = text[:idx].encode("ascii")
+    body = text[idx + 1:].encode("utf-8")
+    expected = hmac.new(_hmac_key(), body, hashlib.sha256).hexdigest().encode("ascii")
+    if not hmac.compare_digest(sig, expected):
+        raise ValueError("HMAC 校验失败 (数据被篡改或密钥不匹配)")
+    data = json.loads(body)  # JSONDecodeError 同样向上抛
+    if data.get("version") != _GRAPH_VERSION:
+        raise ValueError(f"图谱 schema 版本不兼容: {data.get('version')} != {_GRAPH_VERSION}")
+    return data
+
+
+def _serialize_payload(store: "GraphStore") -> bytes:
+    """把内存结构序列化 JSON 信封 (tuples/set → list, 加载时还原)。"""
+    payload = {
+        "version": _GRAPH_VERSION,
+        "nodes": store.nodes,
+        "edges": store.edges,
+        "adj_out": {k: list(v) for k, v in store.adj_out.items()},
+        "adj_in": {k: list(v) for k, v in store.adj_in.items()},
+        "edge_keys": [list(k) for k in store._edge_keys],
+        "lower_index": store._lower_index,
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    return _seal(body)
 
 
 class GraphStore(GraphStoreInterface):
@@ -37,7 +110,7 @@ class GraphStore(GraphStoreInterface):
         # "dictionary changed size during iteration" (nodes/adj_* 迭代时被改)
         self._lock = threading.RLock()
         self._persist_path = persist_path
-        # Redis 共享后端 (可选): 整图 pickle 写入 Redis, 多 worker 共享同一份, 省去重复 LLM 抽取。
+        # Redis 共享后端 (可选): 整图 (JSON+HMAC 信封) 写入 Redis, 多 worker 共享同一份, 省去重复 LLM 抽取。
         # 懒加载客户端; 未安装 redis 或连接失败 → _redis=None, 回退内存/文件, 不阻断启动。
         self._redis = None
         self._redis_key = redis_key or (os.path.basename(persist_path) if persist_path else "graph")
@@ -58,25 +131,15 @@ class GraphStore(GraphStoreInterface):
     def _save(self) -> None:
         """持久化图谱 (build_from_chunks 完成后调用; 不每步落盘避免大图 I/O 抖动)。
 
-        原子性 (S2): 持锁对内存结构做快照 → 写临时文件 → os.replace 原子替换。
+        原子性 (S2): 持锁对内存结构做快照 → JSON+HMAC 信封 → 写临时文件 → os.replace 原子替换。
         崩溃/断电时旧文件保持完整, 不会出现"写一半即损坏 → 静默清空"。
-        双写: (1) 本地 pickle 文件 (重启恢复); (2) Redis (多 worker 共享)。
+        双写: (1) 本地 JSON+HMAC 文件 (重启恢复); (2) Redis (多 worker 共享, 同信封格式)。
         S3 注: Redis 整图 set 为 last-writer-wins, 多 worker 各自增量后整图覆盖会互相覆盖
         (A 覆盖 B / B 覆盖 A)。当前单 worker 部署无碍; 多 worker 生产需改增量合并或
         Redis 分布式锁串行化 — 已加 version 字段为后续迁移留口。
         """
         with self._lock:
-            blob = pickle.dumps(
-                {
-                    "version": _GRAPH_VERSION,
-                    "nodes": self.nodes,
-                    "edges": self.edges,
-                    "adj_out": dict(self.adj_out),
-                    "adj_in": dict(self.adj_in),
-                    "edge_keys": self._edge_keys,
-                    "lower_index": self._lower_index,
-                }
-            )
+            blob = _serialize_payload(self)
             if self._persist_path:
                 try:
                     os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
@@ -95,19 +158,22 @@ class GraphStore(GraphStoreInterface):
                 except Exception as e:  # noqa: BLE001 — Redis 写入失败不阻断 (内存态仍可用)
                     logger.warning("图谱 Redis 写入失败: %s", str(e)[:120])
 
+    def _apply(self, data: dict) -> None:
+        """把反序列化出的 dict 还原为带类型的内部结构 (list→tuple, list→set/defaultdict)。"""
+        self.nodes = data["nodes"]
+        self.edges = data["edges"]
+        self.adj_out = defaultdict(list, {k: [tuple(x) for x in v] for k, v in data.get("adj_out", {}).items()})
+        self.adj_in = defaultdict(list, {k: [tuple(x) for x in v] for k, v in data.get("adj_in", {}).items()})
+        self._edge_keys = {tuple(x) for x in data.get("edge_keys", [])}
+        self._lower_index = data.get("lower_index", {})
+
     def _load(self, path: str) -> None:
-        """从 pickle 恢复图谱; 损坏则改名 .corrupt 隔离再回退空图 (不阻断启动, 避免每重启重读坏文件)。"""
+        """从 JSON+HMAC 信封恢复图谱; 损坏/篡改则改名 .corrupt 隔离再回退空图 (不阻断启动)。"""
         try:
             with open(path, "rb") as f:
-                data = pickle.load(f)
-            if data.get("version") != _GRAPH_VERSION:
-                raise ValueError(f"图谱 schema 版本不兼容: {data.get('version')} != {_GRAPH_VERSION}")
-            self.nodes = data["nodes"]
-            self.edges = data["edges"]
-            self.adj_out = defaultdict(list, data.get("adj_out", {}))
-            self.adj_in = defaultdict(list, data.get("adj_in", {}))
-            self._edge_keys = set(data.get("edge_keys", set()))
-            self._lower_index = data.get("lower_index", {})
+                blob = f.read()
+            data = _unseal(blob)
+            self._apply(data)
             logger.info("图谱从 %s 恢复: %d 节点 %d 边", path, len(self.nodes), len(self.edges))
         except Exception as e:  # noqa: BLE001 — 持久化损坏回退空图
             logger.warning("图谱持久化加载失败, 回退空图: %s", str(e)[:120])
@@ -119,23 +185,16 @@ class GraphStore(GraphStoreInterface):
                 pass
 
     def _load_redis(self) -> bool:
-        """从 Redis 恢复整图 (二进制 pickle)。成功返回 True; 缺失/损坏返回 False (调用方回退文件/空图)。"""
+        """从 Redis 恢复整图 (JSON+HMAC 信封)。成功返回 True; 缺失/损坏/篡改返回 False (调用方回退文件/空图)。"""
         try:
             blob = self._redis.get(self._redis_key)
             if not blob:
                 return False
-            data = pickle.loads(blob)
-            if data.get("version") != _GRAPH_VERSION:
-                raise ValueError(f"图谱 schema 版本不兼容: {data.get('version')} != {_GRAPH_VERSION}")
-            self.nodes = data["nodes"]
-            self.edges = data["edges"]
-            self.adj_out = defaultdict(list, data.get("adj_out", {}))
-            self.adj_in = defaultdict(list, data.get("adj_in", {}))
-            self._edge_keys = set(data.get("edge_keys", set()))
-            self._lower_index = data.get("lower_index", {})
+            data = _unseal(blob)
+            self._apply(data)
             logger.info("图谱从 Redis(%s) 恢复: %d 节点 %d 边", self._redis_key, len(self.nodes), len(self.edges))
             return True
-        except Exception as e:  # noqa: BLE001 — Redis 损坏/不可达回退
+        except Exception as e:  # noqa: BLE001 — Redis 损坏/不可达/篡改回退
             logger.warning("图谱 Redis 加载失败, 回退: %s", str(e)[:120])
             return False
 

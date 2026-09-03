@@ -5,6 +5,8 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
+import api.core.skills as skills_mod
+
 
 @pytest.fixture
 def client():
@@ -58,7 +60,6 @@ class TestQAEndpoints:
     def _mock_llm(self, monkeypatch):
         """消真实 LLM 调用 (付费/网络依赖): fake chat 返回固定回答。
         检索仍走真实 embedding (模型缓存后快), 覆盖编排链路不烧钱。"""
-        from api.core import orchestrator
 
         class _FakeLLM:
             async def chat(self, messages, temperature=0.1, max_tokens=2000, json_mode=False, timeout=None):
@@ -66,7 +67,7 @@ class TestQAEndpoints:
 
                 return LLMResponse(content="这是测试回答。", total_tokens=12, prompt_tokens=5, completion_tokens=7)
 
-        monkeypatch.setattr(orchestrator, "get_llm_client", lambda: _FakeLLM())
+        monkeypatch.setattr(skills_mod, "get_llm_client", lambda: _FakeLLM())
 
     def test_ask_returns_response(self, client):
         resp = client.post(

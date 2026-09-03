@@ -6,15 +6,17 @@ from pathlib import Path
 
 import pytest
 
-# 让测试可从项目根运行
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
+import api.core.retrieval as retrieval_mod
+import api.core.skills as skills_mod
 from api.config import settings
 from api.core import session_store
 from api.core.session_store import clear_session, load_session, save_session
 from api.schemas.qa import ChatTurn
+
+# 让测试可从项目根运行
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 class _FakeBackend:
@@ -99,19 +101,19 @@ def patched_session(monkeypatch):
     """注入 FakeLLM + FakeBackend, 暴露 orchestrator 的 ask。"""
     be = _FakeBackend()
     llm = _FakeLLM()
-    import api.core.orchestrator as oc
 
-    monkeypatch.setattr(oc, "get_llm_client", lambda: llm)
+    monkeypatch.setattr(skills_mod, "get_llm_client", lambda: llm)
     monkeypatch.setattr(session_store, "get_cache_backend", lambda: be)
-    monkeypatch.setattr(oc, "get_qa_cache", lambda: None)  # 关缓存, 强制走生成
+    monkeypatch.setattr(skills_mod, "get_qa_cache", lambda: None)  # 关缓存, 强制走生成
 
     # 检索/路由/重排 stub: 让 _skill_rag 走 direct 之外的分支返回稳定上下文
     async def _fake_route(q, skill, llm_client, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
-        return RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule"), 1.0
+        r = RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule")
+        return r, [r], 1.0
 
-    monkeypatch.setattr(oc, "_route", _fake_route)
+    monkeypatch.setattr(skills_mod, "_route", _fake_route)
 
     async def _fake_retrieve(
         question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid", candidate_kbs=None
@@ -129,12 +131,13 @@ def patched_session(monkeypatch):
             "graph_context": None,
         }
 
-    monkeypatch.setattr(oc, "_retrieve_context", _fake_retrieve)
+    monkeypatch.setattr(skills_mod, "_retrieve_context", _fake_retrieve)
+    monkeypatch.setattr(retrieval_mod, "_retrieve_context", _fake_retrieve)
 
     async def _fake_rerank(*a, **k):
         return None
 
-    monkeypatch.setattr(oc, "_rerank_safe", _fake_rerank)
+    monkeypatch.setattr(retrieval_mod, "_rerank_safe", _fake_rerank)
     return llm
 
 
@@ -179,27 +182,31 @@ def test_cache_hit_still_persists_session(monkeypatch):
         def make_key(self, *a, **k):
             return "fixed-key"
 
-        def get(self, key):
+        def make_scope(self, *a, **k):
+            return "fixed-scope"
+
+        def get(self, key, **kwargs):
             self._calls += 1
             return None if self._calls == 1 else {"answer": "cached-answer", "sources": [], "latency_breakdown": {}}
 
-        def set(self, key, value, ttl_s):
+        def set(self, key, value, ttl_s, **kwargs):
             pass
 
     be = _FakeBackend()
     cache = _FakeCache()
     llm = _FakeLLM()
-    monkeypatch.setattr(oc, "get_llm_client", lambda: llm)
+    monkeypatch.setattr(skills_mod, "get_llm_client", lambda: llm)
     monkeypatch.setattr(session_store, "get_cache_backend", lambda: be)
-    monkeypatch.setattr(oc, "get_qa_cache", lambda: cache)
+    monkeypatch.setattr(skills_mod, "get_qa_cache", lambda: cache)
     monkeypatch.setattr(settings, "qa_cache_enabled", True)  # 确保走缓存路径(可能被子测试改过)
 
     async def _fake_route(q, skill, llm_client, start, candidate_kbs=None):
         from engines.router.intent_router import RoutingResult
 
-        return RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule"), 1.0
+        r = RoutingResult(skill="tech", kb="default", confidence=0.9, source="rule")
+        return r, [r], 1.0
 
-    monkeypatch.setattr(oc, "_route", _fake_route)
+    monkeypatch.setattr(skills_mod, "_route", _fake_route)
 
     sid = "cache-hit-session"
     # R1: 缓存未命中, 落盘 [u1, a1]

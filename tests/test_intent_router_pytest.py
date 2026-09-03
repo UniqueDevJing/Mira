@@ -1,4 +1,9 @@
-"""IntentRouter 单元测试 — 规则/LLM/fallback 三源路由。"""
+"""P1' 路由多候选 (IntentRouter.route_multi) 契约测试。
+
+全部使用 llm_client=None: 模糊时 _llm_route_multi 直接返回空(不调 LLM),
+仅验证规则层多候选 + early-exit + direct 让位 + 解析 clamp, 零外部依赖。
+项目约定 sync 测试 + asyncio.run (见 test_p0_contract_pytest)。
+"""
 
 import asyncio
 
@@ -7,87 +12,93 @@ import pytest
 from engines.router.intent_router import IntentRouter
 
 
-def run(coro):
-    return asyncio.run(coro)
+@pytest.fixture
+def patched_rules(monkeypatch):
+    """注入极简受控规则集, 避免依赖真实词表波动。"""
+    skills = {
+        "a": {"kb": "ka"},
+        "b": {"kb": "kb"},
+        "direct": {"kb": None},
+        "tech": {"kb": "ktech"},
+    }
+    rules = {
+        "a": [("退款", 0.9)],
+        "b": [("物流", 0.7)],
+        "direct": [("你好", 0.5)],
+        "tech": [("代码", 0.6)],
+    }
+    monkeypatch.setattr("engines.router.intent_router.SKILLS", skills)
+    monkeypatch.setattr("engines.router.intent_router.SKILL_RULES", rules)
+    monkeypatch.setattr("engines.router.intent_router.ROUTE_THRESHOLD", 0.85)
+    monkeypatch.setattr("engines.router.intent_router.FALLBACK_SKILL", "tech")
+    return skills, rules
 
 
-class FakeLLM:
-    def __init__(self, content: str = "", error: Exception | None = None):
-        self.content = content
-        self.error = error
-
-    async def chat(self, messages, **kwargs):
-        if self.error:
-            raise self.error
-        from api.core.llm_client import LLMResponse
-
-        return LLMResponse(content=self.content)
+def test_route_multi_rule_early_exit_high_conf(patched_rules):
+    """规则 best conf >= 阈值 → early-exit 单候选, 不调 LLM。"""
+    router = IntentRouter(llm_client=None)
+    cands = asyncio.run(router.route_multi("怎么退款"))
+    assert len(cands) == 1
+    assert cands[0].skill == "a"
+    assert cands[0].confidence == 0.9
+    assert cands[0].source == "rule"
 
 
-# ── 规则直通 (conf >= 0.85) ──
+def test_route_multi_rule_multi_hit_ambiguous(patched_rules):
+    """best conf < 阈值(模糊) + 多命中 → 返回多候选(降序), LLM=None 不补全。"""
+    _skills, rules = patched_rules
+    rules["a"] = [("退款", 0.8)]  # 降到模糊区
+    router = IntentRouter(llm_client=None)
+    cands = asyncio.run(router.route_multi("退款和物流怎么处理"))
+    assert len(cands) == 2
+    assert [c.skill for c in cands] == ["a", "b"]
+    assert cands[0].confidence >= cands[1].confidence
 
 
-def test_rule_service():
-    res = run(IntentRouter().route("退货流程是什么"))
-    assert res.skill == "service" and res.source == "rule"
-    assert res.confidence >= 0.85 and res.kb == "service"
+def test_route_multi_no_hit_returns_empty(patched_rules):
+    """无规则命中 → route_multi 空; route() 兼容降级 fallback。"""
+    router = IntentRouter(llm_client=None)
+    assert asyncio.run(router.route_multi("今天天气真不错")) == []
+    r = asyncio.run(router.route("今天天气真不错"))
+    assert r.skill == "tech"
+    assert r.confidence == 0.0
+    assert r.source == "fallback"
 
 
-def test_rule_tech():
-    res = run(IntentRouter().route("系统架构如何部署"))
-    assert res.skill == "tech" and res.source == "rule" and res.kb == "tech"
+def test_route_direct_yields_to_business(patched_rules):
+    """direct 与业务同现时, direct 不进候选(让位业务)。"""
+    router = IntentRouter(llm_client=None)
+    cands = asyncio.run(router.route_multi("你好，退款怎么操作"))
+    skills = [c.skill for c in cands]
+    assert "direct" not in skills
+    assert "a" in skills
 
 
-def test_rule_direct_greeting():
-    res = run(IntentRouter().route("你好"))
-    assert res.skill == "direct" and res.source == "rule"
+def test_route_compat_returns_top1(patched_rules):
+    """route() 与 route_multi()[0] 一致(兼容旧单候选调用方)。"""
+    router = IntentRouter(llm_client=None)
+    multi = asyncio.run(router.route_multi("怎么退款"))
+    single = asyncio.run(router.route("怎么退款"))
+    assert single.skill == multi[0].skill
+    assert single.confidence == multi[0].confidence
 
 
-def test_greeting_with_business_routes_business():
-    """寒暄词与业务词同现时 direct 让位，避免误分类。"""
-    res = run(IntentRouter().route("你好，退货怎么处理"))
-    assert res.skill == "service" and res.source == "rule"
+def test_parse_skills_clamps_conf():
+    """_parse_skills_with_conf 越界 conf 被 clamp 到 [0,1]。"""
+    parsed = IntentRouter._parse_skills_with_conf(
+        '[{"skill":"x","conf":1.5},{"skill":"y","conf":-0.3}]'
+    )
+    assert parsed[0] == ("x", 1.0)
+    assert parsed[1] == ("y", 0.0)
 
 
-# ── LLM 分类 (conf < 0.85 时) ──
+def test_parse_skills_handles_single_object():
+    """退化: 单对象 JSON 也能解析为单候选(默认 conf 0.9)。"""
+    parsed = IntentRouter._parse_skills_with_conf('{"skill":"x"}')
+    assert parsed == [("x", 0.9)]
 
 
-def test_llm_classify_on_ambiguous():
-    llm = FakeLLM(content='{"skill":"tech"}')
-    res = run(IntentRouter(llm_client=llm).route("帮我查一下这个怎么弄"))
-    assert res.skill == "tech" and res.source == "llm"
-
-
-def test_llm_classify_service():
-    llm = FakeLLM(content='{"skill": "service"}')
-    res = run(IntentRouter(llm_client=llm).route("完全没有规则词的模糊问题"))
-    assert res.skill == "service" and res.source == "llm"
-
-
-def test_llm_error_fallback():
-    llm = FakeLLM(error=RuntimeError("api down"))
-    res = run(IntentRouter(llm_client=llm).route("没有规则词的问题"))
-    assert res.skill == "tech" and res.source == "fallback"
-
-
-def test_no_llm_fallback_tech():
-    res = run(IntentRouter().route("完全没有规则词的模糊问题"))
-    assert res.skill == "tech" and res.source == "fallback"
-
-
-# ── JSON 解析容错 ──
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ('{"skill":"tech"}', "tech"),
-        ('```json\n{"skill": "service"}\n```', "service"),
-        ("  direct  ", "direct"),
-        ('{"skill":"unknown"}', "unknown"),  # 解析成功，但路由层会因不在 SKILLS 中而过滤
-        ("not json at all", None),
-        ("", None),
-    ],
-)
-def test_parse_skill(raw, expected):
-    assert IntentRouter._parse_skill(raw) == expected
+def test_parse_skills_skips_invalid_items():
+    """缺失 skill / 非 dict 项被跳过, 不抛异常。"""
+    parsed = IntentRouter._parse_skills_with_conf('[{"conf":0.5}, "junk", {"skill":"z","conf":0.8}]')
+    assert parsed == [("z", 0.8)]

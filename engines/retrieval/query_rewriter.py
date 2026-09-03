@@ -35,7 +35,7 @@ class QueryRewriter:
                 # SyncLLMClient.chat 返回 LLMResponse 对象
                 content = response.content if hasattr(response, "content") else str(response)
                 lines = content.strip().split("\n")
-                return [l.strip().lstrip("0123456789. -") for l in lines if l.strip()][:max_rewrites]
+                return [ln.strip().lstrip("0123456789. -") for ln in lines if ln.strip()][:max_rewrites]
             except Exception as e:  # noqa: BLE001 — 降级边界: LLM 失败走模板改写
                 logger.warning("LLM 查询改写失败，降级到模板改写: %s", str(e)[:200])
 

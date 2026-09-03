@@ -86,7 +86,7 @@ class RedisBackend:
     def __init__(self, redis_url: str, key_prefix: str = "rag:"):
         import redis
 
-        self._r = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
+        self._r = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=5, retry_on_timeout=True)
         self._prefix = key_prefix
 
     def _k(self, key: str) -> str:

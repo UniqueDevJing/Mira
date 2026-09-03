@@ -1,0 +1,40 @@
+FFF                                                                      [100%][safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "\\\\?\\C:\\Users\\Dominion\\AppData\\Local\\Temp\\pytest-of-Dominion\\garbage-6c3bd7ec-ce82-40d6-a68f-532711ab880e", "reason": "windows-sandbox-recycle-bin-unavailable"}
+[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "\\\\?\\C:\\Users\\Dominion\\AppData\\Local\\Temp\\pytest-of-Dominion\\garbage-3a760ccb-4668-4c0c-aebb-04f322d2407f", "reason": "windows-sandbox-recycle-bin-unavailable"}
+
+================================== FAILURES ===================================
+______________________ test_ask_threads_history_into_llm ______________________
+tests\test_multiturn_pytest.py:117: in test_ask_threads_history_into_llm
+    roles = [m["role"] for m in msgs]
+                                ^^^^
+E   TypeError: 'NoneType' object is not iterable
+---------------------------- Captured stderr call -----------------------------
+Building prefix dict from the default dictionary ...
+Loading model from cache C:\Users\Dominion\AppData\Local\Temp\jieba.cache
+Loading model cost 0.337 seconds.
+Prefix dict has been built successfully.
+------------------------------ Captured log call ------------------------------
+DEBUG    jieba:__init__.py:113 Building prefix dict from the default dictionary ...
+DEBUG    jieba:__init__.py:132 Loading model from cache C:\Users\Dominion\AppData\Local\Temp\jieba.cache
+DEBUG    jieba:__init__.py:164 Loading model cost 0.337 seconds.
+DEBUG    jieba:__init__.py:166 Prefix dict has been built successfully.
+WARNING  api.core.orchestrator:orchestrator.py:968 [service] 生成前护栏触发(low_relevance), 拒答防幻觉
+_____________ test_llm_context_uses_reranked_docs_not_provisional _____________
+tests\test_stream_sources_pytest.py:140: in test_llm_context_uses_reranked_docs_not_provisional
+    assert RERANKED[0]["content"] in ctx, "LLM 上下文应包含重排后排首位的片段"
+E   AssertionError: LLM 上下文应包含重排后排首位的片段
+E   assert '重排前排第二的片段' in ''
+------------------------------ Captured log call ------------------------------
+WARNING  api.core.orchestrator:orchestrator.py:1369 [service] 生成前护栏触发(low_relevance), 拒答防幻觉
+______________________ test_session_isolated_across_ids _______________________
+tests\test_session_pytest.py:166: in test_session_isolated_across_ids
+    assert not any("退款多久到账" in u for u in users)
+E   assert not True
+E    +  where True = any(<generator object test_session_isolated_across_ids.<locals>.<genexpr> at 0x000001C566A9DD80>)
+------------------------------ Captured log call ------------------------------
+ERROR    api.core.orchestrator:orchestrator.py:1080 LLM 生成失败: 'dict' object has no attribute 'prompt_tokens'
+WARNING  api.core.orchestrator:orchestrator.py:968 [default] 生成前护栏触发(low_relevance), 拒答防幻觉
+=========================== short test summary info ===========================
+FAILED tests/test_multiturn_pytest.py::test_ask_threads_history_into_llm - Ty...
+FAILED tests/test_stream_sources_pytest.py::test_llm_context_uses_reranked_docs_not_provisional
+FAILED tests/test_session_pytest.py::test_session_isolated_across_ids - asser...
+3 failed in 2.31s

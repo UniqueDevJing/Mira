@@ -47,6 +47,10 @@ class VectorStoreInterface(ABC):
     def delete_by_doc_id(self, doc_id: str) -> None:
         """按文档 ID 删除"""
 
+    @abstractmethod
+    def get_by_doc_id(self, doc_id: str) -> list[dict]:
+        """按文档 ID 取回该文档全部 chunk (供 U2「来源展开全文」端点)。"""
+
 
 class EmbedderInterface(ABC):
     """文本嵌入接口"""

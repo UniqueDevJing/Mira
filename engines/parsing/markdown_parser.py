@@ -72,4 +72,5 @@ class MarkdownParser:
             source={"type": "markdown", "path": file_path},
             pages=[{"page_num": 1, "blocks": blocks}],
             tables=[],
+            update_time=int(Path(file_path).stat().st_mtime),
         )

@@ -8,6 +8,7 @@ engines/common/llm_client.py — 引擎层实体抽取复用同步客户端, 消
 import asyncio
 import json
 import logging
+import random
 import time
 from threading import Lock
 
@@ -119,7 +120,13 @@ class LLMClient(_BaseLLMClient):
 
                 # 429/5xx 可重试
                 if attempt < self.max_retries:
-                    wait_time = 2**attempt * 0.5
+                    wait_time = 2 ** attempt * 0.5 + random.uniform(0, 0.5)
+                    retry_after = e.response.headers.get("Retry-After") if hasattr(e, 'response') and e.response else None
+                    if retry_after:
+                        try:
+                            wait_time = max(wait_time, float(retry_after))
+                        except ValueError:
+                            pass
                     logger.warning(
                         "LLM 调用失败 (HTTP %d), 重试 %d/%d, 等待 %.1fs",
                         status_code,
@@ -137,7 +144,13 @@ class LLMClient(_BaseLLMClient):
             except httpx.TimeoutException as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    wait_time = 2**attempt * 0.5
+                    wait_time = 2 ** attempt * 0.5 + random.uniform(0, 0.5)
+                    retry_after = e.response.headers.get("Retry-After") if hasattr(e, 'response') and e.response else None
+                    if retry_after:
+                        try:
+                            wait_time = max(wait_time, float(retry_after))
+                        except ValueError:
+                            pass
                     logger.warning("LLM 调用超时, 重试 %d/%d, 等待 %.1fs", attempt + 1, self.max_retries, wait_time)
                     llm_errors_total.labels(error_type="timeout").inc()
                     await asyncio.sleep(wait_time)

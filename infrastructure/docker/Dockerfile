@@ -2,10 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 仅 headless 运行所需: opencv-headless/onnxruntime 依赖 glib + OpenMP (原 libgl1-mesa-glx 等
-# X11 库是 non-headless opencv 才需要, 新版 Debian 已无该包, 且本项目用 headless)
+# 运行时依赖: onnxruntime 需 libgomp(OpenMP); opencv-python(non-headless) 需 libxcb + libGL
+# (RapidOCR 扫描件兜底依赖 opencv, 缺 libxcb 会 ImportError 致 OCR 不可用)
 RUN apt-get update && apt-get install -y \
-    libglib2.0-0 libgomp1 \
+    libglib2.0-0 libgomp1 libxcb1 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # HuggingFace 国内镜像 (离线场景设 TRANSFORMERS_OFFLINE=1)

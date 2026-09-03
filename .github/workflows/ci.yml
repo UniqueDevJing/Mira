@@ -22,9 +22,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # ruff 仅作质量门禁提示；不阻断主流程（保证 CI 不因人品问题变红）
-      - name: Lint (ruff)
-        run: ruff check . || true
+      # ruff 质量门禁(阻断): 范围 = 产品核心(api/engines/tests), 全部零错误;
+      # scripts/ web/ 为一次性运维/评测与本地静态服务器辅助代码, 不计入门禁(可 ruff check 自查)。
+      - name: Lint (ruff, blocking)
+        run: ruff check api engines tests
 
       - name: Run tests (with coverage gate)
         # 跳过需真实模型/网络的 slow/integration 测试；--cov-fail-under=80 低于 80% 即失败
@@ -32,3 +33,66 @@ jobs:
           HF_ENDPOINT: "https://hf-mirror.com"
           RAG_API_KEY_ENABLED: "false"
         run: make test-ci
+
+      - name: Routing regression gate
+        # 纯规则确定性门禁: 固定黄金路由题, 断言 gold_kb ∈ 候选集; 不调 LLM/服务, 秒级完成
+        env:
+          RAG_API_KEY_ENABLED: "false"
+        run: make eval-routing
+
+  recall-gate:
+    # 召回回归门禁: 首阶段(--no-rerank) 390 问约 45s, 比对已提交基线, 回退超容差则阻断。
+    # 语料(corpus_chunks.json, 19MB 文档派生数据)未入库 —— 由自托管 runner 挂载提供。
+    # 机制: 挂载点路径经仓库变量 EVAL_CORPUS_DIR 传入; 语料缺失(无挂载/ fork PR)则显式 SKIP, 不失败、不挂起。
+    # 自托管启用: 仓库 Variables 设 EVAL_RUNNER_LABEL=<runner标签> 与 EVAL_CORPUS_DIR=<挂载目录>。
+    name: Retrieval Recall Gate
+    runs-on: ${{ vars.EVAL_RUNNER_LABEL || 'ubuntu-latest' }}
+    env:
+      HF_ENDPOINT: "https://hf-mirror.com"
+      RAG_API_KEY_ENABLED: "false"
+      EVAL_CORPUS_DIR: ${{ vars.EVAL_CORPUS_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check corpus availability
+        id: corpus
+        run: |
+          if [ -n "${EVAL_CORPUS_DIR:-}" ] && [ -f "${EVAL_CORPUS_DIR}/corpus_chunks.json" ]; then
+            echo "found=1" >> "$GITHUB_OUTPUT"
+            echo "语料已挂载: ${EVAL_CORPUS_DIR}"
+          else
+            echo "found=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::召回门禁 SKIP — 未挂载语料 (仓库 Variables 设 EVAL_CORPUS_DIR 指向挂载目录以启用)"
+          fi
+
+      - name: Set up Python
+        if: steps.corpus.outputs.found == '1'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.corpus.outputs.found == '1'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run recall gate
+        if: steps.corpus.outputs.found == '1'
+        run: make eval-gate EVAL_DIR="$EVAL_CORPUS_DIR"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Frontend XSS safety tests
+        run: make test-frontend
+
+      - name: Check frontend bundle size
+        run: make check-size

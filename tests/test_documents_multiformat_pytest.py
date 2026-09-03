@@ -22,7 +22,9 @@ def test_upload_accepts_markdown():
 
 
 def test_upload_rejects_uppercase_unknown():
-    r = client.post("/api/v1/documents/upload", files={"file": ("a.XLSX", b"x", "application/octet-stream")})
+    # 大写扩展名且扩展名本身不受支持 (.FOO -> .foo 不在 SUPPORTED_EXTENSIONS), 校验应在扩展名归一后拒绝 (400)。
+    # 注意: .XLSX 是大写但 xlsx 本身受支持, 不能用来测"未知" — 这里用确定未知的 .FOO。
+    r = client.post("/api/v1/documents/upload", files={"file": ("a.FOO", b"x", "application/octet-stream")})
     assert r.status_code == 400
 
 

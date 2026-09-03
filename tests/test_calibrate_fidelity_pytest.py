@@ -39,7 +39,11 @@ def test_config_fidelity_threshold_env_override(monkeypatch):
 
 
 def test_config_fidelity_threshold_default(monkeypatch):
-    """未设环境变量时, 默认 0.40。"""
+    """未设环境变量且忽略 .env 文件时, 代码默认 0.60。
+
+    pydantic-settings 会从 .env 文件读取, 故实例化时显式 _env_file=None 隔离文件干扰
+    (否则 P2 定稿写入 .env 的 0.45 会覆盖代码默认, 与本测试"验证代码默认"的语义无关)。
+    """
     monkeypatch.delenv("RAG_FIDELITY_THRESHOLD", raising=False)
-    s = Settings()
-    assert s.fidelity_threshold == 0.40
+    s = Settings(_env_file=None)
+    assert s.fidelity_threshold == 0.60

@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 # - /admin 仅交付静态控制台 HTML, 其内数据接口仍走 X-API-Key 鉴权;
 # - /metrics 供同栈 Prometheus 抓取 (跨容器非 loopback 客户端), 内部监控标准做法;
 # - /web 前端静态资源 (index/admin 引用的 JS/CSS/图标) 公开直出, 数据接口仍在 /api/v1 下鉴权。
-EXEMPT_PATHS = {"/health", "/", "/admin", "/metrics", "/docs", "/openapi.json", "/redoc", "/web"}
+EXEMPT_PATHS = {"/health", "/", "/metrics", "/web", "/admin"}
+
+
+def _is_bound_to_all_interfaces() -> bool:
+    return os.environ.get("UVICORN_HOST", "127.0.0.1") == "0.0.0.0"
 
 API_KEY_HEADER = "X-API-Key"
 BEARER_PREFIX = "Bearer "
@@ -59,7 +63,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         enabled = os.environ.get("RAG_API_KEY_ENABLED") or ("true" if settings.api_key_enabled else "false")
         if enabled.lower() != "true":
-            # 鉴权关闭: 注入 anonymous admin 主体, 路由层 RBAC 逻辑仍可一致运行
+            if _is_bound_to_all_interfaces() and not _is_exempt(request.url.path):
+                return JSONResponse(status_code=403, content={"detail": "鉴权已关闭，请勿绑定 0.0.0.0"})
             request.state.principal = anonymous_admin()
             return await call_next(request)
 
@@ -98,6 +103,39 @@ def _extract_bearer(auth_header: str) -> str | None:
     if auth_header.startswith(BEARER_PREFIX):
         return auth_header[len(BEARER_PREFIX) :]
     return None
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """安全响应头中间件 (OPT-S1)。
+
+    - X-Content-Type-Options / X-Frame-Options / Referrer-Policy: 全响应下发, 零兼容风险。
+    - CSP: 仅对 HTML 页面下发 —— index.html 为单文件内联脚本/样式, 必须允许
+      'unsafe-inline', 否则前端直接白屏; 对 API JSON/SSE 不下发, 避免无谓干扰。
+    - HSTS: 仅当请求经 TLS (X-Forwarded-Proto=https, cloudflared 隧道场景) 时下发,
+      避免 http://127.0.0.1 本地调试被浏览器强制升级。
+    """
+
+    CSP_HTML = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'"
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers.setdefault("Content-Security-Policy", self.CSP_HTML)
+        if request.headers.get("x-forwarded-proto", "").lower() == "https":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
 
 async def error_sanitization_handler(request: Request, call_next):

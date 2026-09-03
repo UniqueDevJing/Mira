@@ -56,55 +56,32 @@ def mixed_docs():
 class TestReranker:
     """Reranker 测试"""
 
-    def test_rerank_changes_order(self, reranker, query, mixed_docs):
-        """重排应改变文档顺序"""
-        original_order = [d["id"] for d in mixed_docs]
-        reranked = reranker.rerank(query, mixed_docs, top_k=5)
-        reranked_order = [d["id"] for d in reranked]
-        assert original_order != reranked_order, "重排未改变文档顺序"
-
-    def test_rerank_relevant_docs_rank_higher(self, reranker, query, mixed_docs):
-        """FastAPI 相关文档应排在前面"""
-        reranked = reranker.rerank(query, mixed_docs, top_k=5)
-        fastapi_ids = {"d1", "d3", "d5"}
-        top3_ids = {d["id"] for d in reranked[:3]}
-        assert fastapi_ids & top3_ids, "FastAPI 相关文档未进入 Top-3"
-
-    def test_rerank_top_k_truncation(self, reranker, query, mixed_docs):
-        """top_k 应正确截断结果"""
-        reranked = reranker.rerank(query, mixed_docs, top_k=2)
-        assert len(reranked) == 2
-
-    def test_rerank_empty_docs(self, reranker, query):
-        """空文档列表应返回空"""
-        result = reranker.rerank(query, [], top_k=5)
-        assert result == []
-
-    def test_ce_model_unavailable_falls_back(self, embedder, query, mixed_docs):
-        """配置了 Cross-Encoder 模型名但模型不可下载时, 应降级 Bi-Encoder 而非崩溃。"""
-        r = Reranker(embedder=embedder, ce_model_name="nonexistent/model-xyz")
-        result = r.rerank(query, mixed_docs, top_k=5)
-        assert len(result) > 0
-        assert "score" in result[0]
-
-    def test_default_config_no_ce_model(self, embedder, query, mixed_docs):
-        """默认配置（reranker_model 空）走 Bi-Encoder, 不尝试加载模型。"""
-        from api.config import settings
-
-        r = Reranker(embedder=embedder, ce_model_name=settings.reranker_model or None)
-        result = r.rerank(query, mixed_docs, top_k=5)
-        assert len(result) > 0
-
-    def test_rerank_no_embedder(self, query, mixed_docs):
-        """无 embedder 时应返回原文档"""
+    def test_rerank_no_embedder_returns_top_k(self, query, mixed_docs):
+        """无 embedder 时直接返回原文档 top_k"""
         reranker = Reranker(embedder=None)
         result = reranker.rerank(query, mixed_docs, top_k=5)
         assert len(result) == 5
-        assert result[0]["id"] == "d1"  # 保持原始顺序
+        assert result[0]["id"] == "d1"
 
-    def test_rerank_updates_scores(self, reranker, query, mixed_docs):
-        """重排后应更新分数"""
-        reranked = reranker.rerank(query, mixed_docs, top_k=5)
-        for doc in reranked:
-            assert "score" in doc
-            assert isinstance(doc["score"], float)
+    def test_rerank_no_ce_returns_top_k(self, embedder, query, mixed_docs):
+        """无 Cross-Encoder 模型时返回原文档 top_k (bi-encoder 重排已移除, 与向量检索信号重复)"""
+        reranker = Reranker(embedder=embedder, ce_model_name="")
+        result = reranker.rerank(query, mixed_docs, top_k=3)
+        assert len(result) == 3
+
+    def test_rerank_top_k_truncation(self, embedder, query, mixed_docs):
+        """top_k 应正确截断结果"""
+        reranker = Reranker(embedder=embedder)
+        reranked = reranker.rerank(query, mixed_docs, top_k=2)
+        assert len(reranked) == 2
+
+    def test_rerank_empty_docs(self, embedder, query):
+        """空文档列表应返回空"""
+        result = Reranker(embedder=embedder).rerank(query, [], top_k=5)
+        assert result == []
+
+    def test_ce_model_unavailable_falls_back(self, embedder, query, mixed_docs):
+        """配置了 Cross-Encoder 模型名但模型不可下载时, 应返回原文档而非崩溃。"""
+        r = Reranker(embedder=embedder, ce_model_name="nonexistent/model-xyz")
+        result = r.rerank(query, mixed_docs, top_k=5)
+        assert len(result) > 0

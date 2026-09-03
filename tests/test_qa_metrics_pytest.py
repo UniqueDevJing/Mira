@@ -31,7 +31,9 @@ def test_faithfulness_no_embed_fn_equals_word_only():
 def test_faithfulness_embedding_lifts_paraphrase():
     # 词重合为 0 (无共享 2 字 token), 但语义一致 → 旧实现会误拒; embedding 抬升避免误拒
     ctx = ["香蕉属于热带作物，生长在温暖地区。"]
-    embed_fn = lambda t: [1.0, 0.0]  # 任意固定向量使 answer/context 余弦=1
+    def embed_fn(t):  # 任意固定向量使 answer/context 余弦=1
+        return [1.0, 0.0]
+
     faith = _faithfulness("苹果是一种水果，长在温暖的地方", ctx, embed_fn=embed_fn)
     assert faith >= EMBED_FAITHFUL_MIN
 
@@ -39,7 +41,9 @@ def test_faithfulness_embedding_lifts_paraphrase():
 def test_faithfulness_embedding_weak_does_not_lift():
     # 词重合 0 且 embedding 几乎正交 → 护栏不松, 仍判低忠实
     ctx = ["香蕉属于热带作物，生长在温暖地区。"]
-    embed_fn = lambda t: [1.0, 0.0] if "苹果" in t else [0.0, 1.0]
+    def embed_fn(t):
+        return [1.0, 0.0] if "苹果" in t else [0.0, 1.0]
+
     faith = _faithfulness("苹果是一种水果", ctx, embed_fn=embed_fn)
     assert faith < 0.4
 
@@ -47,7 +51,9 @@ def test_faithfulness_embedding_weak_does_not_lift():
 def test_faithfulness_embedding_failure_falls_back_to_word():
     # 嵌入不可用 → 退回词重合信号, 不崩溃为 0
     ctx = ["水果富含维生素，对身体有益。"]
-    embed_fn = lambda t: (_ for _ in ()).throw(RuntimeError("model down"))
+    def embed_fn(t):
+        return (_ for _ in ()).throw(RuntimeError("model down"))
+
     faith = _faithfulness("水果对身体有益", ctx, embed_fn=embed_fn)
     assert faith > 0.3
 

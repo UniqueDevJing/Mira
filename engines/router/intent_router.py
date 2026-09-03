@@ -14,16 +14,18 @@ import logging
 import re
 from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
-
 from engines.router.routing_rules import (  # 规则配置单一事实来源, 与匹配算法分离
+    CLASSIFY_MULTI_PROMPT,
     CLASSIFY_PROMPT,
     FALLBACK_SKILL,
+    FANOUT_MARGIN,
     LLM_TIMEOUT_S,
     ROUTE_THRESHOLD,
     SKILL_RULES,
     SKILLS,
 )
+
+logger = logging.getLogger(__name__)
 
 # 路由规则与提示词见 engines/router/routing_rules.py (单一事实来源); 本文件只保留匹配算法。
 
@@ -41,15 +43,44 @@ class IntentRouter:
         self.llm_client = llm_client
 
     async def route(self, question: str) -> RoutingResult:
-        rule = self._rule_route(question)
-        if rule is not None:
-            return rule
-
-        llm_result = await self._llm_route(question)
-        if llm_result is not None:
-            return llm_result
-
+        """单候选兼容入口: 返回 route_multi 的 top-1, 无候选降级 fallback。"""
+        candidates = await self.route_multi(question)
+        if candidates:
+            return candidates[0]
         return RoutingResult(FALLBACK_SKILL, SKILLS[FALLBACK_SKILL]["kb"], 0.0, "fallback")
+
+    async def route_multi(self, question: str, top_n: int = 3) -> list[RoutingResult]:
+        """P1' 多候选路由: 返回 top_n 候选(降序), 供 selective fanout 使用。
+
+        - 规则层确定 (best conf >= ROUTE_THRESHOLD): early-exit, 不调 LLM(省延迟)。
+          但只有次选与 top-1 置信度差 > FANOUT_MARGIN 时才真的退化为单候选; 差距落在
+          余量内 = 主题横跨多库(如退换货同时命中 policy 制度与 service 话术), 返回 top-2
+          交扇出并行检索, 主路由归因仍是 top-1。
+        - 模糊 (规则低于阈值或无命中): 调 LLM 取 top-2 自评候选, 与规则候选合并去重取最高 conf
+        - 始终保留 direct 让位逻辑(有业务命中时 direct 不进候选, 与 _rule_route 一致)
+        """
+        rule_cands = self._rule_route_all(question)
+        if rule_cands and rule_cands[0].confidence >= ROUTE_THRESHOLD:
+            # 规则足够确定 → early-exit, 不调 LLM
+            # 但"确定"≠"唯一归属": 次选与 top-1 置信度接近时说明规则自己也分不清库归属,
+            # 单路会漏掉答案所在的另一个库 (P1' 实证: 退货题单路 service, policy 库完全不查
+            # → recall_doc=0)。此时保留 top-2 让扇出覆盖, 主路由归因不变。
+            if (
+                len(rule_cands) > 1
+                and rule_cands[1].confidence >= rule_cands[0].confidence - FANOUT_MARGIN
+            ):
+                return rule_cands[:2]
+            return rule_cands[:1]
+
+        # 模糊: 合并规则候选 + LLM top-2
+        merged: dict[str, RoutingResult] = {r.skill: r for r in rule_cands}
+        llm_cands = await self._llm_route_multi(question, top_n=2)
+        for r in llm_cands:
+            if r.skill not in merged or r.confidence > merged[r.skill].confidence:
+                merged[r.skill] = r
+
+        ranked = sorted(merged.values(), key=lambda r: r.confidence, reverse=True)
+        return ranked[:top_n]
 
     def _rule_route(self, question: str) -> RoutingResult | None:
         q = question.lower()
@@ -84,6 +115,27 @@ class IntentRouter:
             return RoutingResult(best_skill, kb, round(best_conf, 2), "rule")
         return None
 
+    def _rule_route_all(self, question: str) -> list[RoutingResult]:
+        """P1' 规则层全候选(降序): 所有 conf>0 的技能, 含 direct 让位处理。供 route_multi 使用。"""
+        q = question.lower()
+        scored: list[RoutingResult] = []
+        best_business = None
+        best_business_conf = 0.0
+        for skill, rules in SKILL_RULES.items():
+            max_conf = 0.0
+            for keyword, weight in rules:
+                if self._kw_hit(keyword, q):
+                    max_conf = max(max_conf, weight)
+            if max_conf <= 0:
+                continue
+            if skill != "direct" and max_conf > best_business_conf:
+                best_business, best_business_conf = skill, max_conf
+            scored.append(RoutingResult(skill, SKILLS[skill]["kb"], round(max_conf, 2), "rule"))
+        # direct 让位: 有业务命中时 direct 不进候选(与 _rule_route 行为一致)
+        scored = [r for r in scored if not (r.skill == "direct" and best_business is not None)]
+        scored.sort(key=lambda r: r.confidence, reverse=True)
+        return scored
+
     @staticmethod
     def _kw_hit(keyword: str, q: str) -> bool:
         """关键词命中: 英文按 ASCII 词边界匹配 (防 "hi" 命中 "this"、"api" 命中 "fastapi"),
@@ -111,7 +163,9 @@ class IntentRouter:
                 self.llm_client.chat(
                     messages=[
                         {"role": "system", "content": "你是一个意图分类器，只输出 JSON。"},
-                        {"role": "user", "content": CLASSIFY_PROMPT.format(question=question)},
+                        # 用 replace 注入问题: CLASSIFY_PROMPT 是 f-string, 内含字面 JSON 示例 {"skill":...},
+                        # 若用 .format() 二次解析会把字面花括号当占位符报 KeyError; replace 只替换 {question} 标记
+                        {"role": "user", "content": CLASSIFY_PROMPT.replace("{question}", question)},
                     ],
                     temperature=0.1,
                     max_tokens=20,
@@ -127,6 +181,37 @@ class IntentRouter:
         except Exception as e:  # noqa: BLE001 — 路由降级边界: LLM 失败走 fallback
             logger.warning("路由 LLM 分类失败: %s, 降级 fallback", str(e)[:120])
         return None
+
+    async def _llm_route_multi(self, question: str, top_n: int = 2) -> list[RoutingResult]:
+        """P1' LLM 多候选: 输出 top_n 带自评置信度的技能。失败/超时返回空(由规则候选兜底)。"""
+        if not self.llm_client:
+            return []
+        try:
+            response = await asyncio.wait_for(
+                self.llm_client.chat(
+                    messages=[
+                        {"role": "system", "content": "你是一个意图分类器，只输出 JSON 数组。"},
+                        {"role": "user", "content": CLASSIFY_MULTI_PROMPT.replace("{question}", question)},
+                    ],
+                    temperature=0.1,
+                    max_tokens=60,
+                ),
+                timeout=LLM_TIMEOUT_S,
+            )
+            parsed = self._parse_skills_with_conf(response.content)
+            valid = [
+                RoutingResult(skill, SKILLS[skill]["kb"], round(conf, 2), "llm")
+                for skill, conf in parsed
+                if skill in SKILLS
+            ]
+            if valid:
+                logger.info("路由 LLM 多候选: %s", [(r.skill, r.confidence) for r in valid[:top_n]])
+                return valid[:top_n]
+        except TimeoutError:
+            logger.warning("路由 LLM 多候选分类超时 (>%.1fs), 降级规则候选", LLM_TIMEOUT_S)
+        except Exception as e:  # noqa: BLE001 — 路由降级边界: LLM 失败走规则/fallback
+            logger.warning("路由 LLM 多候选分类失败: %s, 降级规则候选", str(e)[:120])
+        return []
 
     @staticmethod
     def _parse_skill(content: str) -> str | None:
@@ -147,3 +232,35 @@ class IntentRouter:
             if skill in content.lower():
                 return skill
         return None
+
+    @staticmethod
+    def _parse_skills_with_conf(content: str) -> list[tuple[str, float]]:
+        """解析 LLM 返回的 [{"skill":..,"conf":..}, ...] 为 (skill, conf) 列表。防御性: 缺字段/非法值跳过。"""
+        if not content:
+            return []
+        try:
+            data = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            # 退化: 尝试当单对象解析
+            single = IntentRouter._parse_skill(content)
+            return [(single, 0.9)] if single else []
+        if isinstance(data, list):
+            out: list[tuple[str, float]] = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                skill = str(item.get("skill", "")).strip().lower()
+                if not skill:
+                    continue
+                try:
+                    conf = float(item.get("conf", 0.0))
+                except (TypeError, ValueError):
+                    conf = 0.0
+                conf = max(0.0, min(1.0, conf))  # clamp 防越界
+                out.append((skill, conf))
+            return out
+        if isinstance(data, dict):
+            # 单对象 JSON: 退化解析(默认 conf 0.9)
+            single = str(data.get("skill", "")).strip().lower()
+            return [(single, 0.9)] if single else []
+        return []

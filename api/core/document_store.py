@@ -7,6 +7,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
+from datetime import UTC
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,16 @@ class DocumentStore:
         with self._get_conn() as conn:
             cursor = conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
             return cursor.rowcount > 0
+
+    def purge_old_qa_logs(self, retention_days: int) -> int:
+        from datetime import datetime, timedelta
+
+        # created_at 为 SQLite CURRENT_TIMESTAMP(UTC) —— 须用 aware UTC 比较;
+        # 原 naive now()(本地时区)在非 UTC 机器上会误删/漏删。
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
+        with self._get_conn() as conn:
+            cur = conn.execute("DELETE FROM qa_logs WHERE created_at < ?", (cutoff,))
+            return cur.rowcount
 
     def reset_stale_processing(self) -> int:
         """服务重启时重置卡在 processing 的文档 (后台任务随进程中断, 状态永不变)。"""

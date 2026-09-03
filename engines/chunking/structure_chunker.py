@@ -7,7 +7,7 @@ from engines.interfaces import Chunk
 
 logger = logging.getLogger(__name__)
 
-_CHINESE_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+_CHINESE_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", ".", "!", "?", ";", " ", ""]
 
 
 class RecursiveTextSplitter:
@@ -16,10 +16,11 @@ class RecursiveTextSplitter:
     自写而非 langchain — 项目 design-decisions 拒绝 LangChain 抽象层，且无此依赖。
     """
 
-    def __init__(self, chunk_size: int = 800, chunk_overlap: int = 128, separators=None):
+    def __init__(self, chunk_size: int = 800, chunk_overlap: int = 128, separators=None, min_chunk_size: int = 20):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.separators = separators or _CHINESE_SEPARATORS
+        self.min_chunk_size = min_chunk_size
 
     def split_text(self, text: str) -> list[str]:
         # overlap 只在此处应用一次, 避免递归层内复合
@@ -49,6 +50,8 @@ class RecursiveTextSplitter:
         if current and len(current) + len(piece) <= self.chunk_size:
             return current + piece
         self._flush(chunks, current)
+        if len(piece) < self.min_chunk_size:
+            return piece
         return piece
 
     def _flush(self, chunks: list[str], buf: str) -> str:
@@ -76,7 +79,8 @@ class RecursiveTextSplitter:
     def _hard_split(self, text: str) -> list[str]:
         """无分隔符可用: 按 chunk_size 硬切, 不含 overlap — 由顶层 _apply_overlap 统一加一次"""
         step = max(self.chunk_size, 1)
-        return [text[i : i + self.chunk_size] for i in range(0, len(text), step)]
+        chunks = [text[i:i+self.chunk_size] for i in range(0, len(text), step)]
+        return [c for c in chunks if len(c) >= self.min_chunk_size]
 
     def _apply_overlap(self, chunks: list[str]) -> list[str]:
         if self.chunk_overlap <= 0 or len(chunks) <= 1:
@@ -102,18 +106,31 @@ class StructureChunker:
         chains = self._heading_chains(blocks)
         segments = self._split_segments(blocks)
         doc_title = self._doc_title(uir_doc)
+        update_time = getattr(uir_doc, "update_time", 0)
         chunks = []
-        for start_idx, seg in segments:
+        # 独立 child 计数器: child ID 与旧版完全一致 (不受 parent 插入影响), 保证已有检索/测试零冲击
+        child_idx = 0
+        for seg_idx, (start_idx, seg) in enumerate(segments):
             title_chain = chains[start_idx]
             # 纯标题段 (标题后紧跟标题/文档尾): 不产"仅标题"空 chunk, 标题由下一段承接
             if not any(b["type"] == "paragraph" for b in seg):
                 continue
             content = "\n\n".join(b["content"] for b in seg)
+            # 短段落(单块即覆盖): 直接产 child, 无需 parent (避免自引用冗余, 对齐 code_chunker)
             if len(content) <= self.max_chars:
-                chunks.append(self._make_chunk(uir_doc.doc_id, content, seg, title_chain, doc_title, len(chunks)))
+                chunks.append(self._make_chunk(uir_doc.doc_id, content, seg, title_chain, doc_title, child_idx, update_time))
+                child_idx += 1
             else:
+                # 长段落: 拆出多个 child(检索单元) + 1 个 parent(整段大上下文)。
+                # child 通过 parent_id 回拉 parent 全文 —— 父子文档机制 (对齐 code_chunker):
+                # 小 child 保证检索精度, 命中后回拉大 parent 喂 LLM, 兼顾上下文完整性。
+                pid = f"{uir_doc.doc_id}_parent_{seg_idx:04d}"
                 for part in self._splitter.split_text(content):
-                    chunks.append(self._make_chunk(uir_doc.doc_id, part, seg, title_chain, doc_title, len(chunks)))
+                    chunks.append(self._make_chunk(uir_doc.doc_id, part, seg, title_chain, doc_title, child_idx, update_time,
+                                                   parent_id=pid, is_parent=False))
+                    child_idx += 1
+                chunks.append(self._make_chunk(uir_doc.doc_id, content, seg, title_chain, doc_title, child_idx, update_time,
+                                               parent_id="", is_parent=True, chunk_id=pid))
         return chunks
 
     @staticmethod
@@ -187,11 +204,13 @@ class StructureChunker:
 
     @staticmethod
     def _make_chunk(
-        doc_id: str, content: str, segment: list[dict], title_chain: list[str], doc_title: str, index: int
+        doc_id: str, content: str, segment: list[dict], title_chain: list[str], doc_title: str, index: int, update_time: int = 0,
+        parent_id: str = "", is_parent: bool = False, chunk_id: str | None = None,
     ) -> Chunk:
         first, last = segment[0], segment[-1]
+        cid = chunk_id or f"{doc_id}_chunk_{index:04d}"
         return Chunk(
-            chunk_id=f"{doc_id}_chunk_{index:04d}",
+            chunk_id=cid,
             doc_id=doc_id,
             content=content.strip(),
             context={"title_chain": title_chain, "doc_title": doc_title or doc_id},
@@ -199,5 +218,11 @@ class StructureChunker:
                 "page_range": [first.get("page_num", 1), last.get("page_num", 1)],
                 "char_count": len(content),
                 "paragraph_count": len(segment),
+                # 视频要求: 每条文本携带 file_name / update_time 元数据
+                "file_name": doc_title or doc_id,
+                "update_time": update_time,
+                # 父子文档机制: is_parent 标记父块, parent_id 指向父块 (子块回拉父块大上下文)
+                "is_parent": is_parent,
+                "parent_id": parent_id,
             },
         )

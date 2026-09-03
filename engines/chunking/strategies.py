@@ -13,8 +13,9 @@
 import logging
 import re
 
-from engines.interfaces import Chunk
+from engines.chunking.code_chunker import CodeChunker
 from engines.chunking.structure_chunker import StructureChunker
+from engines.interfaces import Chunk
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ class FaqChunker:
     """
 
     _QA_PAIRS = re.compile(
-        r"(?:^|\n)\s*(?:问|Q|问题|用户|客户)[\s:：]+([\s\S]*?)\s*"
-        r"(?:答|A|回答|话术|回复|客服)[\s:：]+([\s\S]*?)(?=(?:\n\s*(?:问|Q|问题|用户|客户)[\s:：])|\Z)",
+        r"(?:^|\n)\s*(?:问|Q|问题|用户|客户)[一-鿿0-9]*(?:[\.．:：])?([\s\S]*?)\s*"
+        r"(?:答|A|回答|话术|回复|客服)[一-鿿0-9]*(?:[\.．:：])?([\s\S]*?)(?=(?:\n\s*(?:问|Q|问题|用户|客户)[一-鿿0-9]*(?:[\.．:：])?)|\Z)",
         re.IGNORECASE,
     )
 
@@ -66,8 +67,16 @@ class ClauseChunker:
     """
 
     # 捕获组: re.split 保留条款头, 拼回对应段落 (避免丢失 "第X条" 标识)
+    # 覆盖真实合同常见编号: 第一条 / 第一章 / 1.1 / 1. / 一、 / （一） 等
     _CLAUSE_SPLIT = re.compile(
-        r"(\n\s*(?:第[一二三四五六七八九十百千0-9]+[条章节目篇]\s|(?:[0-9]+(?:\.[0-9]+)+)[\s、.、]))"
+        r"(\n\s*(?:"
+        r"第[一二三四五六七八九十百千0-9]+[条章节目篇][\s：:、，]?"  # 第一条 / 第二章 (允许冒号/顿号尾随)
+        r"|(?:[0-9]+(?:\.[0-9]+)+)[\s、.、]"                        # 1.1 / 2.3. (多层级)
+        r"|[0-9]+\.(?!\d)\s"                                        # 1. / 2. (单级阿拉伯, 排除 1.5 小数)
+        r"|[0-9]+、"                                                 # 1、 / 2、 (数字顿号)
+        r"|[一二三四五六七八九十百千]+、"                              # 一、 / 二、 (中文枚举)
+        r"|[（(][一二三四五六七八九十百千0-9]+[）)]"                  # （一） / (1) (括号编号)
+        r"))"
     )
 
     def __init__(self, max_chars: int = 1200, overlap: int = 200):
@@ -120,8 +129,19 @@ class ClauseChunker:
         return merged
 
     def _hard_split(self, text: str) -> list[str]:
-        step = max(self.max_chars, 1)
-        return [text[i : i + self.max_chars] for i in range(0, len(text), step)]
+        if len(text) <= self.max_chars:
+            return [text]
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + self.max_chars
+            if end < len(text):
+                chunks.append(text[start:end])
+                start = end - self.overlap
+            else:
+                chunks.append(text[start:])
+                break
+        return chunks
 
 
 class _TableAware:
@@ -174,6 +194,8 @@ def get_chunker(spec, settings) -> object:
         base = FaqChunker(max_chars, overlap)
     elif strategy == "clause":
         base = ClauseChunker(max_chars, overlap)
+    elif strategy == "code":
+        base = CodeChunker(max_chars, overlap)
     else:
         base = StructureChunker(max_chars, overlap)
 

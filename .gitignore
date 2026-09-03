@@ -7,7 +7,11 @@ venv/
 *.db
 milvus.db/
 lancedb_data/
+# 评测语料/导出等大体积数据 (85MB), 只保留生成脚本, 不入库
+data/
 data/eval-summary.json
+# 召回门禁临时产物 (写在仓库根, 因挂载的语料目录可能只读)
+.eval-gate-current.json
 # 评估标注产物 (可能含答案, 不入库)
 data/labeled.json
 data/labeled_review.md
@@ -16,6 +20,13 @@ data/qa_export.json
 data/labeled_production.json
 data/labeled_demo.json
 *.log
+# 会话临时产物
+junit_*.xml
+_pytest_*.log
+_ptmp_*/
+_dbg*.py
+_probe*.py
+*_out.txt
 *.egg-info/
 dist/
 *.pdf
@@ -24,6 +35,17 @@ dist/
 
 # 测试输出缓存
 tests/last_test_results.json
+
+# 测试临时目录 (pytest-tmp 隔离产物, 数千文件: 不忽略会淹没 git status)
+.pytest-tmp/
+.pytest_cache/
+.pytest_*/
+.ruff_cache/
+# 重构前源码备份
+.refactor-backup/
+
+# 本地模型权重 (体积大, 用 scripts/download_model.py 按需下载)
+models/
 
 # 覆盖率产物 (pytest-cov)
 .coverage

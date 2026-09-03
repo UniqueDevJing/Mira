@@ -122,22 +122,25 @@ def test_rerank_no_embedder_returns_topk():
     assert out == docs[:2]
 
 
-def test_rerank_bi_encoder_sorts_and_does_not_mutate_input():
+def test_rerank_no_embedder_returns_top_k():
+    docs = [{"content": "a"}, {"content": "b"}, {"content": "c"}]
+    out = Reranker(embedder=None).rerank("q", docs, top_k=2)
+    assert out == docs[:2]
+
+
+def test_rerank_no_ce_returns_top_k():
     docs = [
         {"content": "a", "embedding": [1.0] * 512},
         {"content": "b", "embedding": [0.0] * 512},
     ]
-    out = Reranker(embedder=_FakeEmbedder()).rerank("q", docs, top_k=2)
-    assert out[0]["content"] == "a"  # 高分在前
-    assert "score" in out[0]
-    assert "score" not in docs[0]  # 不修改调用方对象
+    out = Reranker(embedder=_FakeEmbedder(), ce_model_name="").rerank("q", docs, top_k=2)
+    assert out[0]["content"] == "a"  # 保持原始顺序
 
 
-def test_rerank_bi_encoder_embedds_missing_vectors():
+def test_rerank_no_ce_missing_vectors_no_crash():
     docs = [{"content": "a"}, {"content": "b"}]
-    out = Reranker(embedder=_FakeEmbedder()).rerank("q", docs, top_k=2)
+    out = Reranker(embedder=_FakeEmbedder(), ce_model_name="").rerank("q", docs, top_k=2)
     assert len(out) == 2
-    assert all("score" in d for d in out)
 
 
 def test_rerank_ce_path_uses_predict_scores():

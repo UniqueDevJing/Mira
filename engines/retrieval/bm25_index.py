@@ -4,10 +4,10 @@
 每知识库一个独立实例，内存增量维护。查询结果与向量检索同结构（dict），便于 RRF 融合。
 """
 
+import json
 import logging
 import math
 import os
-import pickle
 import threading
 from collections import Counter, defaultdict
 
@@ -46,32 +46,53 @@ class Bm25Index:
             return
         try:
             os.makedirs(os.path.dirname(self._persist_path) or ".", exist_ok=True)
-            with open(self._persist_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "docs": self._docs,
-                        "token_counts": self._token_counts,
-                        "df": dict(self._df),
-                        "total_tokens": self._total_tokens,
-                        "avgdl": self._avgdl,
-                    },
-                    f,
-                )
+            data = {
+                "docs": self._docs,
+                "df": dict(self._df),
+                "total_tokens": self._total_tokens,
+                "avgdl": self._avgdl,
+            }
+            tmp_path = self._persist_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp_path, self._persist_path)
         except OSError as e:
-            logger.warning("BM25 持久化写入失败: %s", str(e)[:120])
+            logger.error("BM25 持久化写入失败: %s", str(e)[:120])
+
+    @staticmethod
+    def _read_persisted(path: str):
+        """读取持久化索引, 返回 dict; 不可恢复时返回 None。
+
+        现行实现统一用 JSON 落盘。历史 pickle 兼容分支已删除(仓库内无残留 .pkl,
+        且从向量库自愈重建机制可在 JSON 损坏/缺失时回退完整索引)。读取失败一律回退
+        None, 由 `_load` → `_check_bm25_consistency` 触发从向量库重建, 避免静默退化成纯向量检索。
+        """
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
+            logger.warning("BM25 持久化读取失败(将触发从向量库重建): %s", str(e)[:120])
+            return None
+        except OSError as e:
+            logger.warning("BM25 持久化读取失败: %s", str(e)[:120])
+            return None
 
     def _load(self, path: str) -> None:
+        data = self._read_persisted(path)
+        if data is None:
+            return
         try:
-            with open(path, "rb") as f:
-                data = pickle.load(f)
             self._docs = data["docs"]
-            self._token_counts = data["token_counts"]
+            self._token_counts = []
+            for doc in self._docs:
+                content = doc.get("content", "") or ""
+                self._token_counts.append(Counter(_tokenize(content)))
             self._df = defaultdict(int, data["df"])
             self._total_tokens = data["total_tokens"]
             self._avgdl = data["avgdl"]
             logger.info("BM25 索引从 %s 恢复: %d 文档", path, len(self._docs))
-        except Exception as e:  # noqa: BLE001 — 持久化损坏回退空索引
-            logger.warning("BM25 持久化加载失败, 回退空索引: %s", str(e)[:120])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("BM25 持久化数据损坏, 回退空索引: %s", str(e)[:120])
 
     def add_documents(self, docs: list[dict]) -> None:
         """追加文档，维护 df / avgdl 增量统计。"""
@@ -91,6 +112,22 @@ class Bm25Index:
             self._avgdl = self._total_tokens / len(self._docs) if self._docs else 0.0
             self._save()
             logger.debug("BM25 索引更新: %d 文档, avgdl=%.1f", len(self._docs), self._avgdl)
+
+    def rebuild(self, docs: list[dict]) -> None:
+        """全量重建索引(先清空再添加), 用于从权威数据源(向量库)恢复。
+
+        与 add_documents 的区别: add_documents 是**追加**, 若在已加载旧内容的实例上
+        调用会把恢复数据叠加成重复。重建/自愈场景必须用本方法。
+        结束后照常落盘, 调用方持有的实例引用无需替换。
+        """
+        with self._lock:
+            self._docs = []
+            self._token_counts = []
+            self._df = defaultdict(int)
+            self._total_tokens = 0
+            self._avgdl = 0.0
+        self.add_documents(docs)
+        logger.info("BM25 索引已全量重建: %d 文档", len(self._docs))
 
     def __len__(self) -> int:
         with self._lock:

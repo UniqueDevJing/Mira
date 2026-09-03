@@ -11,7 +11,7 @@ import json
 import logging
 import os
 
-from engines.doc_types import DOC_TYPES, RAG_KBS
+from engines.doc_types import DOC_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,23 @@ DEFAULT_CLASSIFY_PROMPT = f"""你是意图分类器。根据用户问题判断�
 
 用户问题: {{question}}
 只返回 JSON，不要其他文字。"""
+
+
+# P1' 多候选分类: 输出 top-2 带相对置信度(自评), 供选择性扇出使用。
+# 与 DEFAULT_CLASSIFY_PROMPT 同构, 仅输出格式从单对象改为数组; conf 为 LLM 自评相对相关度(0-1)。
+DEFAULT_CLASSIFY_MULTI_PROMPT = f"""你是意图分类器。根据用户问题判断最相关的技能, 按相关度从高到低输出前2个, 只输出 JSON 数组:
+[{{"skill":"<类型id>", "conf": <0到1之间的相对置信度>}}, ...]
+
+可选技能 (类型id 对应文档库):
+{_TYPE_LABELS}
+
+说明:
+- 只输出最相关的前2个技能
+- conf 是你对该技能与问题相关度的自评(0到1之间); 最相关的应接近1, 次相关的应明显更低
+- 寒暄问候/与知识库无关的闲聊归为 direct
+
+用户问题: {{question}}
+只返回 JSON 数组, 不要其他文字。"""
 
 
 def _env_float(name: str, default: float) -> float:
@@ -71,6 +88,16 @@ def load_rules_from_file(path: str | os.PathLike) -> dict:
 ROUTE_THRESHOLD = _env_float("RAG_ROUTE_THRESHOLD", 0.85)
 LLM_TIMEOUT_S = _env_float("RAG_LLM_TIMEOUT_S", 1.5)
 FALLBACK_SKILL = _env_str("RAG_FALLBACK_SKILL", "tech")
+# 扇出余量: 规则层 top-1 已达 ROUTE_THRESHOLD 时, 若次选与 top-1 的置信度差 <= 该值,
+# 仍保留 top-2 供选择性扇出 (而非死板单路)。
+#
+# 动机: 单路 early-exit 会让"跨库主题"只检索一个库, 端到端召回丢失。典型如退换货 ——
+# policy(制度: 期限/条件/比例) 与 service(话术: 流程/时效) 规则命中同为 0.9,
+# 单路只会检索其中一个, 答案所在的另一个库完全不查, 表现为 recall_doc=0。
+# 置信度接近 = 模型/规则自己也分不清归属, 此时扇出覆盖两库才是正确取舍。
+#
+# 调大 = 更容易扇出 (召回↑ / 延迟↑); 设 0 = 恢复严格单路 (仅 top-1 达标即返回单候选)。
+FANOUT_MARGIN = _env_float("RAG_FANOUT_MARGIN", 0.1)
 
 # 规则词表: 设置 RAG_ROUTING_RULES_FILE 即用自定义词表, 否则用内置 (从注册表生成)
 _RULES_FILE = os.environ.get("RAG_ROUTING_RULES_FILE")
@@ -84,3 +111,4 @@ else:
     SKILL_RULES = DEFAULT_SKILL_RULES
 
 CLASSIFY_PROMPT = DEFAULT_CLASSIFY_PROMPT
+CLASSIFY_MULTI_PROMPT = DEFAULT_CLASSIFY_MULTI_PROMPT

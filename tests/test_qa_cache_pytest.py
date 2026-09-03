@@ -8,6 +8,7 @@ import asyncio
 
 import pytest
 
+import api.core.skills as skills_mod
 from api.config import settings
 from api.core import orchestrator
 from api.core.qa_cache import QACache, get_qa_cache
@@ -97,7 +98,8 @@ def test_ask_caches_then_hits(monkeypatch):
     calls = {"n": 0}
 
     async def fake_route(question, skill, llm, start, candidate_kbs=None):
-        return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
+        r = RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual")
+        return r, [r], 1.0
 
     async def fake_skill_rag(
         question,
@@ -115,8 +117,8 @@ def test_ask_caches_then_hits(monkeypatch):
         calls["n"] += 1
         return _canned_result()
 
-    monkeypatch.setattr(orchestrator, "_route", fake_route)
-    monkeypatch.setattr(orchestrator, "_skill_rag", fake_skill_rag)
+    monkeypatch.setattr(skills_mod, "_route", fake_route)
+    monkeypatch.setattr(skills_mod, "_skill_rag", fake_skill_rag)
 
     r1 = asyncio.run(orchestrator.ask(**KEY_ARGS))
     r2 = asyncio.run(orchestrator.ask(**KEY_ARGS))
@@ -132,7 +134,8 @@ def test_ask_cache_disabled_runs_each_time(monkeypatch):
     calls = {"n": 0}
 
     async def fake_route(question, skill, llm, start, candidate_kbs=None):
-        return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
+        r = RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual")
+        return r, [r], 1.0
 
     async def fake_skill_rag(
         question,
@@ -150,8 +153,8 @@ def test_ask_cache_disabled_runs_each_time(monkeypatch):
         calls["n"] += 1
         return _canned_result()
 
-    monkeypatch.setattr(orchestrator, "_route", fake_route)
-    monkeypatch.setattr(orchestrator, "_skill_rag", fake_skill_rag)
+    monkeypatch.setattr(skills_mod, "_route", fake_route)
+    monkeypatch.setattr(skills_mod, "_skill_rag", fake_skill_rag)
 
     asyncio.run(orchestrator.ask(**KEY_ARGS))
     asyncio.run(orchestrator.ask(**KEY_ARGS))
@@ -167,7 +170,8 @@ def test_ask_stream_caches_then_replays(monkeypatch):
     calls = {"n": 0}
 
     async def fake_route(question, skill, llm, start, candidate_kbs=None):
-        return RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual"), 1.0
+        r = RoutingResult(skill="tech", kb="tech", confidence=1.0, source="manual")
+        return r, [r], 1.0
 
     async def fake_stream_rag(
         question,
@@ -181,6 +185,7 @@ def test_ask_stream_caches_then_replays(monkeypatch):
         history=None,
         candidate_kbs=None,
         allowed_kbs=None,
+        precomputed_retr=None,
     ):
         calls["n"] += 1
         yield {"type": "sources", "sources": [{"id": "c1"}], "retrieval_meta": {"top1_score": 0.9}}
@@ -194,8 +199,8 @@ def test_ask_stream_caches_then_replays(monkeypatch):
             "retrieval_meta": {"top1_score": 0.9},
         }
 
-    monkeypatch.setattr(orchestrator, "_route", fake_route)
-    monkeypatch.setattr(orchestrator, "_stream_rag", fake_stream_rag)
+    monkeypatch.setattr(skills_mod, "_route", fake_route)
+    monkeypatch.setattr(skills_mod, "_stream_rag", fake_stream_rag)
 
     async def collect():
         return [ev async for ev in orchestrator.ask_stream(**KEY_ARGS)]

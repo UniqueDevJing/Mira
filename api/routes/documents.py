@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
@@ -18,7 +19,7 @@ from api.schemas.documents import (
     DocumentUploadResponse,
 )
 from api.state import get_bm25_index, get_embedder, get_vector_store
-from engines.doc_types import doc_type_list
+from engines.doc_types import doc_type_list, doc_type_strategy_list
 from engines.parsing.registry import SUPPORTED_MIME, get_parser
 
 logger = logging.getLogger(__name__)
@@ -58,8 +59,22 @@ def _sanitize_filename(filename: str | None) -> str:
 
 @router.get("/types")
 async def list_doc_types():
-    """前端上传下拉: 返回所有走知识库的文档类型 (type_id/label/description/kb)。"""
+    """前端上传下拉: 返回所有走知识库的文档类型 (type_id/label/description/kb)。
+
+    契约稳定 — 上传下拉依赖此结构, 扩展字段请走 /type-strategies。
+    """
     return {"items": doc_type_list()}
+
+
+@router.get("/type-strategies")
+async def list_doc_type_strategies():
+    """只读: 各文档类型的切分策略视图, 供前端「不同文档类型 → 不同切分策略」展示。
+
+    数据在 engines/doc_types.py (单一事实来源) 内静态定义, 本接口只做视图暴露,
+    不读取索引、不写入任何状态。字段: chunker(策略/块大小/重叠/策略释义)、
+    parse(表格感知/ocr)、routing_keywords_count、prompt_hint。
+    """
+    return {"items": doc_type_strategy_list()}
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -79,6 +94,9 @@ async def upload_document(
     # → 最终 kb 一定落在 RAG_KBS 内 (修复默认库 documents 孤儿库 → 检索不到的 bug)
     doc_type = resolve_doc_type(doc_type, knowledge_base)
     spec = get_doc_type(doc_type)
+    # direct 仅用于对话路由 (kb=None), 非知识库文档, 不可入库 — 否则会落入 rag_None 孤儿表
+    if spec.kb is None:
+        raise HTTPException(status_code=400, detail="direct 类型无需入库，仅用于对话路由，不能作为知识库文档上传")
     kb = spec.kb
 
     # 知识库名白名单: 防空名/路径字符 (kb 用于 LanceDB 表名 rag_<kb>); 兼容旧 knowledge_base 入参
@@ -247,11 +265,21 @@ def _process_document_pipeline(doc_id: str, filename: str, content: bytes, kb: s
         uir.doc_id = doc_id  # 统一用上传 uuid, 避免内容哈希跨格式冲突
         logger.info("[%s] 解析完成: %d 页", doc_id, len(uir.pages))
 
-        if uir.tables:
+        # spec 原未在此函数内定义 (NameError): 上传含表格的文档时该分支必崩。
+        # 提前解析一次, 供表格告警与下方 get_chunker 复用。
+        spec = get_doc_type(doc_type)
+        if uir.tables and not (spec.parse or {}).get("table"):
             logger.warning("[%s] 解析出 %d 个表格, 表格内容当前未入库 (仅段落文本入向量库)", doc_id, len(uir.tables))
 
-        chunker = get_chunker(get_doc_type(doc_type), settings)
+        from api.core.metrics import chunk_size_chars, chunking_duration_seconds, chunks_per_document
+
+        chunker = get_chunker(spec, settings)
+        t0 = time.time()
         chunks = chunker.chunk(uir)
+        chunking_duration_seconds.labels(doc_type=doc_type).observe(time.time() - t0)
+        chunks_per_document.labels(doc_type=doc_type).observe(len(chunks))
+        for c in chunks:
+            chunk_size_chars.labels(doc_type=doc_type).observe(len(c.content))
         logger.info("[%s] 分块完成: %d chunks", doc_id, len(chunks))
 
         if not chunks:

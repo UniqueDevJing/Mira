@@ -14,7 +14,8 @@ from api.core.limiter import limiter
 from api.core.orchestrator import ask as orchestrate
 from api.core.orchestrator import ask_stream as orchestrate_stream
 from api.core.session_store import clear_session, load_session, session_owner
-from api.schemas.qa import QARequest, QAResponse, SourceDocument, TokenUsage
+from api.schemas.qa import QARequest, QAResponse, TokenUsage, to_source_document
+from api.state import get_vector_store
 from engines.router.routing_rules import SKILLS
 
 logger = logging.getLogger(__name__)
@@ -75,16 +76,7 @@ async def ask_question(req: QARequest, request: Request):
 
     return QAResponse(
         answer=result["answer"],
-        sources=[
-            SourceDocument(
-                id=d.get("id", ""),
-                chunk_id=d.get("chunk_id", ""),
-                doc_id=d.get("doc_id", ""),
-                content=d.get("content", ""),
-                score=d.get("score", 0.0),
-            )
-            for d in result.get("sources", [])
-        ],
+        sources=[to_source_document(d) for d in result.get("sources", [])],
         skill=result.get("skill", ""),
         kb_id=result.get("kb_id"),
         routing_source=result.get("routing_source"),
@@ -210,6 +202,34 @@ async def delete_session(session_id: str, request: Request):
     _check_session_ownership(request, session_id)
     clear_session(session_id)
     return {"session_id": session_id, "cleared": True}
+
+
+@router.get("/sources/{doc_id}")
+async def get_source_detail(doc_id: str, kb: str | None = None, request: Request = None):
+    """U2 来源展开全文 —— 按 (doc_id, kb) 拉取该文档全部 chunk 完整内容。
+
+    消费 U1 拒答候选(RefusalCandidate.doc_id + kb)。过鉴权: KB 级 RBAC,
+    越权直接 403; doc 不存在/无内容回 404(不泄露跨库存在性)。
+
+    入参:
+      doc_id  — 必填(path), 来自 U1 候选
+      kb      — 必填(query), 候选所属知识库(用于 RBAC 与定位向量表)
+    出参: {doc_id, kb, chunk_count, chunks:[{id,chunk_id,doc_id,content,title_chain,doc_title,file_name,update_time,parent_id}]}
+    """
+    if not kb:
+        raise HTTPException(status_code=400, detail="kb 参数必填 (来源所属知识库)")
+    principal = get_principal(request)
+    if not principal.can_access_kb(kb):
+        raise HTTPException(status_code=403, detail=f"该 API Key 无权访问知识库: {kb}")
+    try:
+        store = get_vector_store(kb)
+        chunks = store.get_by_doc_id(doc_id)
+    except Exception as e:  # noqa: BLE001 — 查询异常统一降级为 404, 不暴露内部错误
+        logger.warning("来源展开查询失败 doc_id=%s kb=%s: %s", doc_id[:32], kb, str(e)[:120])
+        raise HTTPException(status_code=404, detail="未找到该文档或查询失败")
+    if not chunks:
+        raise HTTPException(status_code=404, detail="未找到该文档")
+    return {"doc_id": doc_id, "kb": kb, "chunk_count": len(chunks), "chunks": chunks}
 
 
 # 后台任务集合: asyncio.create_task 不存引用可能被 GC 中途取消 (事件循环无强引用)

@@ -9,6 +9,8 @@ import asyncio
 
 import pytest
 
+import api.core.retrieval as retrieval_mod
+import api.core.skills as skills_mod
 from api.core import orchestrator
 from api.schemas.qa import ChatTurn
 from engines.router.intent_router import RoutingResult
@@ -79,7 +81,8 @@ def patched(monkeypatch):
     fake = _FakeLLM()
 
     async def _fake_retrieve(
-        question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid", candidate_kbs=None
+        question, routing, top_k, start, enable_self_retrieval=False, mode="hybrid",
+        candidate_kbs=None, defer_rerank=False,
     ):
         docs = [{"id": "1", "chunk_id": "c1", "doc_id": "d1", "content": "退款一般一到三个工作日到账", "score": 0.9}]
         return {
@@ -96,12 +99,14 @@ def patched(monkeypatch):
         }
 
     async def _fake_route(question, skill, llm, start, candidate_kbs=None):
-        return RoutingResult(skill="service", kb="service", confidence=1.0, source="rule"), 0.1
+        r = RoutingResult(skill="service", kb="service", confidence=1.0, source="rule")
+        return r, [r], 0.1
 
-    monkeypatch.setattr(orchestrator, "get_qa_cache", lambda: None)
-    monkeypatch.setattr(orchestrator, "get_llm_client", lambda: fake)
-    monkeypatch.setattr(orchestrator, "_retrieve_context", _fake_retrieve)
-    monkeypatch.setattr(orchestrator, "_route", _fake_route)
+    monkeypatch.setattr(skills_mod, "get_qa_cache", lambda: None)
+    monkeypatch.setattr(skills_mod, "get_llm_client", lambda: fake)
+    monkeypatch.setattr(skills_mod, "_retrieve_context", _fake_retrieve)
+    monkeypatch.setattr(retrieval_mod, "_retrieve_context", _fake_retrieve)
+    monkeypatch.setattr(skills_mod, "_route", _fake_route)
     return fake
 
 

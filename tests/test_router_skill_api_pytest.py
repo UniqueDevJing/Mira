@@ -22,8 +22,21 @@ def test_manual_skill_service():
 
 
 def test_rule_route_service():
-    d = client.post("/api/v1/qa/ask", json={"question": "退款怎么处理"}).json()
+    """纯客服领域词 (物流) 仍规则命中 service —— 不受退换货改归 policy 影响。"""
+    d = client.post("/api/v1/qa/ask", json={"question": "物流多久能到"}).json()
     assert d["skill"] == "service" and d["routing_source"] == "rule"
+
+
+def test_rule_route_refund_goes_to_policy():
+    """退换货主题主路由 policy, service 作为次选由 P1' 扇出覆盖。
+
+    行为变更说明: 退换货的"能否退 / 期限 / 退款比例"属制度规范, 评测集亦将退货标为
+    policy, 因此给 policy 补了 退货/退款/退换货/七天无理由 等关键词。客服话术库同样
+    含流程与到账时效内容, 故两者同权重 (0.9) 命中 —— 主路由取 policy, service 作为
+    次选进入扇出 (置信度差 0.0 ≤ FANOUT_MARGIN), 端到端召回不丢失。
+    """
+    d = client.post("/api/v1/qa/ask", json={"question": "退款怎么处理"}).json()
+    assert d["skill"] == "policy" and d["routing_source"] == "rule"
 
 
 def test_rule_route_tech():
