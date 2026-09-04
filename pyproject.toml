@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rag-2.0"
 version = "1.0.0"
-description = "智能文档处理与知识库构建系统"
+description = "基于 RAG 的多模态智能客服系统 — 混合检索/GraphRAG/多Agent分流/多模态输入"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

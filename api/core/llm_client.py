@@ -270,6 +270,7 @@ _shared_circuit_breaker = CircuitBreakerState(half_open_time=30.0)
 # 全局单例（线程安全）
 _llm_client: LLMClient | None = None
 _sync_llm_client: SyncLLMClient | None = None
+_sync_vl_client: SyncLLMClient | None = None
 _llm_lock = Lock()
 _sync_llm_lock = Lock()
 
@@ -291,9 +292,28 @@ def get_llm_client() -> LLMClient:
     return _llm_client
 
 
-def get_sync_llm_client() -> SyncLLMClient:
-    """获取全局同步 LLM 客户端单例"""
-    global _sync_llm_client
+def get_sync_llm_client(vl_model: bool = False) -> SyncLLMClient:
+    """获取全局同步 LLM 客户端单例。
+
+    vl_model=True: 返回视觉模型客户端 (settings.llm_vl_model, 独立单例) —
+    多模态图片输入用; VL 模型未配置时返回 None (调用方回落 OCR)。
+    """
+    global _sync_llm_client, _sync_vl_client
+    if vl_model:
+        from api.config import settings
+
+        if not settings.llm_vl_model:
+            return None  # type: ignore[return-value] — 未配置视觉模型
+        if _sync_vl_client is None:
+            with _sync_llm_lock:
+                if _sync_vl_client is None:
+                    _sync_vl_client = SyncLLMClient(
+                        base_url=settings.llm_base_url,
+                        model=settings.llm_vl_model,
+                        api_key=settings.llm_api_key,
+                        circuit_breaker_state=_shared_circuit_breaker,
+                    )
+        return _sync_vl_client
     if _sync_llm_client is None:
         with _sync_llm_lock:
             if _sync_llm_client is None:

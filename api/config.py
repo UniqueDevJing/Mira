@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-chat"
     llm_api_key: str = ""  # 通过环境变量 RAG_LLM_API_KEY 或 .env 文件注入
+    # 视觉理解模型 (多模态图片输入): qwen-vl 直接理解图片内容, 优于纯 OCR 文字提取
+    llm_vl_model: str = ""  # 环境变量 RAG_LLM_VL_MODEL (如 qwen-vl-plus); 留空回落 RapidOCR 链路
 
     # API 鉴权: 启用后外部请求必须带 X-API-Key / Bearer
     # 注意: security.py 以 os.environ 优先 (支持运行时/测试动态覆盖), 此处读 .env 兜底

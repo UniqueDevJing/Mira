@@ -32,15 +32,16 @@ def _rate_limited(fn):
 
 
 def _merge_image_text(image_base64: str, question: str) -> tuple[str, str]:
-    """图片输入 → OCR 提取文字 → 并入问题。返回 (合并后问题, OCR 识别文字)。
+    """图片输入 → 视觉理解/OCR → 并入问题。返回 (合并后问题, 识别文字)。
 
-    优先直调 RapidOCR (自然图像), 未安装时抛 400 给出明确提示。
-    OCR 失败不静默: 多模态入口失败让用户知道原因, 而非当无图处理。
+    双链路:
+      1) VL 优先: 配置 RAG_LLM_VL_MODEL (如 qwen-vl-plus) 时走视觉模型理解图片内容 —
+         能回答"图里画的是什么/图表数据/截图里的操作步骤", 不止文字提取;
+      2) OCR 兜底: VL 未配置或调用失败时回落 RapidOCR 纯文字提取。
+    失败不静默: 多模态入口失败让用户知道原因, 而非当无图处理。
     """
     import base64
     import binascii
-
-    import numpy as np
 
     try:
         raw = base64.b64decode(image_base64, validate=False)
@@ -48,6 +49,53 @@ def _merge_image_text(image_base64: str, question: str) -> tuple[str, str]:
         raise HTTPException(status_code=400, detail=f"图片 base64 解码失败: {e}") from e
     if not raw:
         raise HTTPException(status_code=400, detail="图片内容为空。")
+
+    # ── 链路 1: 视觉模型理解 (qwen-vl) ──
+    from api.config import settings
+
+    if settings.llm_vl_model:
+        try:
+            from api.core.llm_client import get_sync_llm_client
+
+            mime = "image/png"
+            if raw[:3] == b"\xff\xd8\xff":
+                mime = "image/jpeg"
+            elif raw[:8] == b"\x89PNG\r\n\x1a\n":
+                mime = "image/png"
+            elif raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+                mime = "image/webp"
+            data_url = f"data:{mime};base64,{base64.b64encode(raw).decode()}"
+            prompt = (
+                "请仔细观察这张图片, 提取其中所有与用户提问相关的信息: "
+                "若有文字请完整转录, 若是图表/截图/照片请客观描述其内容。"
+                + (f"\n用户想了解: {question}" if question.strip() else "")
+            )
+            client = get_sync_llm_client(vl_model=True)
+            resp = client.chat(
+                [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                    {"type": "text", "text": prompt},
+                ]}],
+                temperature=0.1,
+                max_tokens=1000,
+                timeout=45,
+            )
+            content = getattr(resp, "content", None)
+            if content and str(content).strip():
+                vl_text = str(content).strip()
+                merged = f"{question}\n[图片内容] {vl_text[:2000]}" if question.strip() else f"[图片内容] {vl_text[:2000]}"
+                return merged.strip(), vl_text
+        except Exception as e:  # noqa: BLE001 — VL 失败回落 OCR, 不中断
+            import logging
+
+            logging.getLogger(__name__).warning("视觉模型理解失败, 回落 OCR: %s", str(e)[:160])
+
+    return _ocr_extract(raw, question)
+
+
+def _ocr_extract(raw: bytes, question: str) -> tuple[str, str]:
+    """OCR 兜底链路: RapidOCR 纯文字提取。"""
+    import numpy as np
 
     try:
         import cv2
@@ -106,6 +154,67 @@ async def _remember_async(user_id: str, question: str, answer: str) -> None:
         logger.warning("长期记忆异步写入异常(忽略): %s", str(e)[:160])
 
 
+def _vision_answer(question: str, image_description: str, image_b64: str,
+                   allowed_kbs: list[str] | None, top_k: int = 4) -> str:
+    """图片场景端到端回答: VL 看图 + 知识库片段增强 → 综合作答。
+
+    检索: 用户原问题在全部授权 KB 内检索 (VL 描述已含图片信息, 问题保持用户语义)。
+    生成: VL 二次调用, 基于图片内容 + 知识库片段回答; 片段不相关时如实说明, 不编造。
+    """
+
+    from api.core.llm_client import get_sync_llm_client
+    from api.state import get_embedder, get_vector_store
+
+    # 1) 知识库片段: 授权范围内逐库检索
+    from engines.doc_types import RAG_KBS
+
+    kbs = [k for k in (allowed_kbs if allowed_kbs is not None else RAG_KBS)
+           if allowed_kbs is None or k in RAG_KBS]
+    snippets: list[str] = []
+    if question.strip():
+        try:
+            emb = get_embedder().embed_query(question[:500])
+            for kb in kbs[:10]:
+                try:
+                    for hit in get_vector_store(kb).search(emb, top_k=2):
+                        c = (hit.get("content") or "").strip()
+                        if c and hit.get("score", 0) >= 0.55:
+                            snippets.append(f"[{kb}] {c[:300]}")
+                except Exception:  # noqa: BLE001 — 单库失败跳过
+                    continue
+        except Exception as e:  # noqa: BLE001 — 检索失败则纯看图作答
+            logger.warning("视觉问答检索片段失败(降级纯看图): %s", str(e)[:120])
+
+    kb_block = "\n".join(snippets[:6]) if snippets else "(知识库中未检索到相关片段)"
+    data_url = "data:image/png;base64," + image_b64
+    prompt = (
+        "你是企业智能客服。用户上传了一张图片并提问。\n"
+        f"图片内容描述: {image_description[:800]}\n\n"
+        f"知识库参考片段:\n{kb_block[:2000]}\n\n"
+        f"用户问题: {question.strip() or '请解读这张图片'}\n\n"
+        "请综合图片内容与知识库片段回答用户问题。规则:\n"
+        "- 优先使用知识库中与问题相关的信息, 引用格式 [来源];\n"
+        "- 图片中的信息可直接使用;\n"
+        "- 若知识库与图片都无法回答, 如实说明, 不得编造。"
+    )
+    client = get_sync_llm_client(vl_model=True)
+    if client is None:
+        raise RuntimeError("视觉模型未配置")
+    resp = client.chat(
+        [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": data_url}},
+            {"type": "text", "text": prompt},
+        ]}],
+        temperature=0.2,
+        max_tokens=1200,
+        timeout=60,
+    )
+    answer = (getattr(resp, "content", None) or "").strip()
+    if not answer:
+        raise RuntimeError("视觉模型返回空")
+    return answer
+
+
 @router.get("/tickets")
 async def list_tickets_endpoint(request: Request, limit: int = 50):
     """投诉工单列表 (运维/客服后台用)。"""
@@ -129,13 +238,42 @@ async def ask_question(req: QARequest, request: Request):
         if kb is not None and kb not in principal.allowed_kbs:
             raise HTTPException(status_code=403, detail=f"该 API Key 无权访问知识库: {req.skill}")
 
-    # ── 多模态输入: 图片 OCR 并入问题文本 (失败给出明确提示, 不静默吞) ──
+    # ── 多模态输入: 视觉理解 (qwen-vl) / OCR 兜底 ──
     question = req.question
     ocr_text = ""
     if req.image_base64:
         question, ocr_text = _merge_image_text(req.image_base64, question)
         if not question.strip():
-            raise HTTPException(status_code=400, detail="图片 OCR 未提取到文字, 请直接输入文本问题或更换图片。")
+            raise HTTPException(status_code=400, detail="图片未能提取有效内容, 请直接输入文本问题或更换图片。")
+
+        # ── 图片场景走"看图 + 知识库增强"端到端链路: 不进文字检索主链路 ──
+        # (VL 已理解图片; 检索 query 用用户原问题拿知识库参考片段, 由 VL 综合图+片段作答。
+        #  避开低相关拒答护栏 — 用户传图必有意图, 片段是否相关由 VL 判断而非文字匹配度)
+        try:
+            vision_answer = _vision_answer(req.question, ocr_text, req.image_base64, principal.allowed_kbs)
+        except Exception as e:  # noqa: BLE001 — VL 链路失败回落文字主链路
+            logger.warning("视觉问答链路失败, 回落文字检索: %s", str(e)[:160])
+        else:
+            latency_ms = (time.time() - start) * 1000
+            _log_qa_async(
+                question=question[:500],
+                answer=vision_answer,
+                skill="vision",
+                kb_id=None,
+                routing_source="vision",
+                degradation_level=0,
+                latency_ms=latency_ms,
+                tokens_total=0,
+                sources=[],
+            )
+            return QAResponse(
+                answer=vision_answer,
+                message_type="consult",
+                agent="vision",
+                ocr_text=ocr_text,
+                latency_ms=round(latency_ms, 2),
+                latency_breakdown={"vision_ms": round(latency_ms, 1)},
+            )
 
     # ── 意图分类 (规则, 零延迟) → 四路分发: 咨询走 RAG, 其余由对应 Agent 接管 ──
     from api.core.agents import (

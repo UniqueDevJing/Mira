@@ -78,8 +78,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="RAG 2.0 API",
-    description="智能文档处理与知识库构建系统",
+    title="基于 RAG 的多模态智能客服系统 API",
+    description="多 Agent 智能分流 · 多模态输入 · 检索增强问答",
     version="1.0.0",
     lifespan=lifespan,
 )
