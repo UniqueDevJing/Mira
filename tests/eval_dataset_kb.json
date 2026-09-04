@@ -1,8 +1,8 @@
 [
   {
     "kb": "policy",
-    "question": "我昨天刚收到货，现在想退掉，能全额退款吗？钱大概多久能回到我账户里？",
-    "reference_answer": "可以全额退款，因为商品签收未超过七天，支持无理由退款。退款金额将原路退回至您的支付账户：若使用微信支付或支付宝支付，预计一到三个工作日到账；若使用银行卡支付，预计三到五个工作日到账。",
+    "question": "我昨天刚收到货，现在不想要了，能退钱吗？怎么退？",
+    "reference_answer": "可以，本商城支持七天内无理由退款。自商品签收之日起七天内，您可申请退款，无需说明理由。退款金额原路退回至您的支付账户：微信或支付宝支付预计一到三个工作日到账，银行卡支付预计三到五个工作日到账。",
     "expected_chunk_ids": [
       "48513be2-39d_chunk_0000"
     ]
@@ -17,8 +17,8 @@
   },
   {
     "kb": "policy",
-    "question": "我提交了退款申请，多久能知道结果？审核不通过的话怎么办？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。若消费者对审核结果有异议，可发起投诉，由平台介入处理。",
+    "question": "我提交了退款申请，多久能知道审核结果？",
+    "reference_answer": "客服在四十八小时内审核退款申请。",
     "expected_chunk_ids": [
       "48513be2-39d_chunk_0002"
     ]
@@ -49,8 +49,8 @@
   },
   {
     "kb": "policy",
-    "question": "我昨天刚收到货，现在不想要了能退吗？钱多久能退回来？",
-    "reference_answer": "可以，本商城支持七天内无理由退款，自商品签收之日起七天内可申请退款，无需说明理由；退款金额原路退回至支付账户，使用微信支付或支付宝支付的订单，退款预计一到三个工作日到账。",
+    "question": "我昨天刚收到货，现在不想要了，能退吗？要怎么操作？",
+    "reference_answer": "可以退。自商品签收之日起七天内，您可申请无理由退款，无需说明理由；所有退款申请由客服团队受理，审核时效为四十八小时内。退款金额将原路退回至您的支付账户：微信或支付宝支付预计一到三个工作日到账，银行卡支付预计三到五个工作日到账。",
     "expected_chunk_ids": [
       "1e379a96-1e2_chunk_0000"
     ]
@@ -64,48 +64,16 @@
     ]
   },
   {
-    "kb": "policy",
-    "question": "我申请退款后，多久能知道结果？审核不通过的话怎么办？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。若消费者对审核结果有异议，可发起投诉，由平台介入处理。",
-    "expected_chunk_ids": [
-      "1e379a96-1e2_chunk_0002"
-    ]
-  },
-  {
-    "kb": "policy",
-    "question": "我买的衣服还没穿，吊牌也在，包装都齐的，能退吗？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售。具体要求：商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。",
-    "expected_chunk_ids": [
-      "1e379a96-1e2_chunk_0003"
-    ]
-  },
-  {
-    "kb": "policy",
-    "question": "我在手机上怎么申请退货啊？",
-    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
-    "expected_chunk_ids": [
-      "1e379a96-1e2_chunk_0004"
-    ]
-  },
-  {
-    "kb": "policy",
-    "question": "我申请退款后，钱大概多久能退回到我的账户里？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "1e379a96-1e2_chunk_0005"
-    ]
-  },
-  {
     "kb": "service",
-    "question": "我刚下单付款，大概多久能发货啊？",
-    "reference_answer": "现货商品在付款后四十八小时内发货，节假日顺延。预售商品按商品页标注的发货时间发货。",
+    "question": "我刚下单买了现货，大概多久能发货啊？",
+    "reference_answer": "现货商品在付款后四十八小时内发货，节假日顺延。",
     "expected_chunk_ids": [
       "3733775f897f9977_chunk_0001"
     ]
   },
   {
     "kb": "service",
-    "question": "我买的东西不到99块钱，快递要收多少钱啊？",
+    "question": "我买的东西不到99块，快递要收多少钱啊？",
     "reference_answer": "未满九十九元的订单，普通快递运费十元，偏远地区（新疆、西藏、青海、宁夏、内蒙古）运费十五元。",
     "expected_chunk_ids": [
       "3733775f897f9977_chunk_0003"
@@ -113,7 +81,7 @@
   },
   {
     "kb": "service",
-    "question": "我的快递三天都没更新物流信息了，该怎么办？",
+    "question": "我的快递三天了物流一直没更新，该怎么办？",
     "reference_answer": "若物流单号超过七十二小时无更新记录，客服应主动联系快递公司核实，核实时长不超过二十四小时，核实结果同步告知消费者；若确认包裹丢失，立即启动补发或退款流程。",
     "expected_chunk_ids": [
       "3733775f897f9977_chunk_0004"
@@ -133,38 +101,6 @@
     "reference_answer": "物流环节造成的破损、丢失，按商品实际支付金额赔付。",
     "expected_chunk_ids": [
       "3733775f897f9977_chunk_0007"
-    ]
-  },
-  {
-    "kb": "tech",
-    "question": "咱们现在用的是哪个向量数据库和嵌入模型啊？",
-    "reference_answer": "向量数据库是 Milvus，嵌入模型是 BGE-M3。",
-    "expected_chunk_ids": [
-      "c3dbffff6a960cc1_chunk_0001"
-    ]
-  },
-  {
-    "kb": "tech",
-    "question": "你们系统支持上传哪些格式的文件啊？",
-    "reference_answer": "支持PDF、DOCX、PPTX格式。",
-    "expected_chunk_ids": [
-      "c3dbffff6a960cc1_chunk_0002"
-    ]
-  },
-  {
-    "kb": "tech",
-    "question": "我的订单还没发货，能帮我查一下现在到哪一步了吗？",
-    "reference_answer": "·····························\n\n··· ····",
-    "expected_chunk_ids": [
-      "c3dbffff6a960cc1_chunk_0003"
-    ]
-  },
-  {
-    "kb": "tech",
-    "question": "咱们公司技术栈里用的是什么数据库和缓存服务？",
-    "reference_answer": "数据库使用 PostgreSQL，缓存服务使用 Redis。",
-    "expected_chunk_ids": [
-      "c3dbffff6a960cc1_chunk_0004"
     ]
   },
   {
@@ -189,222 +125,6 @@
     "reference_answer": "消费者在订单详情页点击申请退款，选择退款原因并填写说明。",
     "expected_chunk_ids": [
       "a01741685003b66d_chunk_0002"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请了退款，多久能知道结果？审核不通过的话怎么办？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。若消费者对审核结果有异议，可发起投诉，由平台处理。",
-    "expected_chunk_ids": [
-      "a01741685003b66d_chunk_0004"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我买的衣服还没穿，吊牌都在，包装也完好，能退货吗？运费怎么算？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售，具体要求：商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。退货物流由消费者先行垫付运费，退款时连同运费一并退回。",
-    "expected_chunk_ids": [
-      "a01741685003b66d_chunk_0006"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退货后，钱大概多久能退回到我账上？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "a01741685003b66d_chunk_0009"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我昨天刚收到货，现在不想要了能退吗？钱多久能退回来？",
-    "reference_answer": "可以退，本商城支持七天内无理由退款，自商品签收之日起七天内可申请退款，无需说明理由；退款金额原路退回至支付账户，使用微信支付或支付宝支付的订单，退款预计一到三个工作日到账。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0000"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在订单详情页怎么申请退款啊？",
-    "reference_answer": "消费者在订单详情页点击申请退款，选择退款原因并填写说明。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0001"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退款后，多久能知道审核结果？",
-    "reference_answer": "客服在四十八小时内审核退款申请。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0002"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我买的衣服还没穿，吊牌都在，包装也完好，能退货吗？运费怎么算？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售。具体要求：商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。退货物流由消费者先行垫付运费，退款时连同运费一并退回。因质量问题导致的退货，运费由商家承担。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0003"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在手机上怎么申请退货啊？",
-    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0004"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退款后，钱大概多久能退回到我的银行卡里？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "addfbb0b-bf7_chunk_0005"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我昨天刚收到货，现在想退掉，不想要了，能退吗？要等多久才能收到退款？",
-    "reference_answer": "可以退，本商城支持七天内无理由退款，自商品签收之日起七天内可申请退款，无需说明理由。退款金额原路退回至支付账户：微信或支付宝支付预计一到三个工作日到账，银行卡支付预计三到五个工作日到账。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0000"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在订单详情页怎么申请退款啊？",
-    "reference_answer": "消费者在订单详情页点击申请退款，选择退款原因并填写说明。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0001"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退款后，多久能知道结果？审核不通过的话怎么办？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。若消费者对审核结果有异议，可发起投诉，由平台介入处理。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0002"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我买的衣服还没穿，吊牌也在，包装都完好，能退货吗？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售。具体要求：商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0003"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在手机上怎么申请退货啊？",
-    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0004"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退款后，钱大概多久能退回到我的支付账户啊？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "2c91d176-6bd_chunk_0005"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我昨天刚收到货，现在不想要了，能退吗？钱多久能退回来？",
-    "reference_answer": "可以退，本商城支持七天内无理由退款。自商品签收之日起七天内可申请退款，无需说明理由。退款金额原路退回至支付账户：微信或支付宝支付预计一到三个工作日到账，银行卡支付预计三到五个工作日到账。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0000"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在订单详情页想退钱，该怎么操作啊？",
-    "reference_answer": "消费者在订单详情页点击申请退款，选择退款原因并填写说明。提交后订单状态变更为退款中。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0001"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我提交了退款申请，多久能知道结果？审核不通过的话还能再申请吗？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0002"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我买的衣服还没穿，吊牌也在，包装都齐的，能退货吗？运费怎么算？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售，具体要求：商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。退货物流由消费者先行垫付运费，退款时连同运费一并退回。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0003"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在手机上怎么申请退货啊？",
-    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0004"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请退款后，钱大概多久能退回到我的账户里？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "12b8293b-2f7_chunk_0005"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我昨天刚收到货，现在想退掉，不想要了，能退吗？要等多久才能收到退款？",
-    "reference_answer": "可以退，本商城支持七天内无理由退款，自商品签收之日起七天内可申请退款，无需说明理由；退款金额原路退回至支付账户，使用微信支付或支付宝支付的订单，退款预计一到三个工作日到账。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0000"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在订单详情页怎么申请退款啊？",
-    "reference_answer": "消费者在订单详情页点击申请退款，选择退款原因并填写说明。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0001"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我提交了退款申请，多久能知道结果？审核不通过的话怎么办？",
-    "reference_answer": "客服在四十八小时内审核退款申请。审核通过后，系统自动发起原路退款。审核不通过的，客服会通过站内信说明原因，消费者可补充凭证后重新提交。若消费者对审核结果有异议，可发起投诉，由平台介入处理。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0002"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我买的衣服还没穿，吊牌也在，包装都完好，能退货吗？运费怎么算？",
-    "reference_answer": "申请退货的商品需保持完好，不影响二次销售，具体要求是商品未经使用、无污渍破损、吊牌及包装完整、配件齐全。退货物流由消费者先行垫付运费，退款时连同运费一并退回。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0003"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我在手机上怎么申请退货啊？",
-    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0004"
-    ]
-  },
-  {
-    "kb": "service",
-    "question": "我申请的退款大概多久能回到我的账户里？",
-    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
-    "expected_chunk_ids": [
-      "0830b25d-0f5_chunk_0005"
     ]
   },
   {
@@ -433,7 +153,7 @@
   },
   {
     "kb": "tech",
-    "question": "用Django开发一个简单的后台管理系统，大概要多久？",
+    "question": "用Django开发一个简单的后台管理系统，大概要多久能上线？",
     "reference_answer": "对于标准的 CRUD 业务系统，Django 可以在一周内完成从零到上线的全流程开发。Django Admin 自动生成的后台管理界面更是被许多项目直接用作内部运营系统。",
     "expected_chunk_ids": [
       "38c37c4568212f38_chunk_0006"
@@ -449,15 +169,15 @@
   },
   {
     "kb": "tech",
-    "question": "用 Flask 写一个简单的 API 接口要写多少行代码？",
-    "reference_answer": "一个典型的 REST API 端点仅需 5 至 10 行代码。",
+    "question": "Flask适合做小型项目或者API服务吗？",
+    "reference_answer": "Flask 的优势在于灵活性和简洁性。对于小型项目、API 网关和微服务原型，Flask 的轻量级特征使其启动极快（通常不到 0.1 秒），代码量少（一个典型的 REST API 端点仅需 5 至 10 行代码），学习曲线平缓。",
     "expected_chunk_ids": [
       "38c37c4568212f38_chunk_0008"
     ]
   },
   {
     "kb": "tech",
-    "question": "为什么我们团队在接手其他同事的Flask项目时总觉得很吃力，要花很多时间搞懂代码结构？",
+    "question": "为什么我们团队接手别人的Flask项目时总觉得特别难上手？",
     "reference_answer": "不同的Flask项目可能使用完全不同的ORM（SQLAlchemy、Peewee、PonyORM）、序列化方案（Marshmallow、Pydantic、Cerberus）和项目结构，这给团队协作和代码交接带来持续的认知成本。",
     "expected_chunk_ids": [
       "38c37c4568212f38_chunk_0009"
@@ -465,146 +185,458 @@
   },
   {
     "kb": "tech",
-    "question": "Sanic和Tornado有什么区别？",
+    "question": "Sanic和Tornado比起来有什么特点？",
     "reference_answer": "Sanic 是一个类 Flask 语法的异步 Web 框架，主打极高性能。",
     "expected_chunk_ids": [
       "38c37c4568212f38_chunk_0010"
     ]
   },
   {
-    "kb": "tech",
-    "question": "用这个框架比FastAPI快多少？值不值得为了这点速度换掉FastAPI？",
-    "reference_answer": "基准测试中的吞吐量略高于 FastAPI（约高 10% 至 15%），但生态丰富度和社区规模远小于 FastAPI。对于大多数业务场景，15% 的吞吐量差异并非瓶颈，而较弱的生态意味着需要自行实现更多的业务组件。",
+    "kb": "contract",
+    "question": "我们签的采购合同里，产品型号、数量和单价这些具体信息写在哪儿啊？",
+    "reference_answer": "具体型号、数量、单价以附件清单为准。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0011"
+      "436e24dcf28ebe0f_clause_0002"
     ]
   },
   {
-    "kb": "tech",
-    "question": "Tornado框架现在还推荐用吗？听说它跟现在的Python异步写法不太一样？",
-    "reference_answer": "Tornado的异步模型基于回调而非async/await协程，与现代Python异步编程范式存在较大差异，学习曲线较陡。",
+    "kb": "contract",
+    "question": "合同附件盖章后和合同正文一样有效吗？",
+    "reference_answer": "附件清单经双方盖章确认后作为合同不可分割部分，与合同正文具有同等法律效力。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0012"
+      "436e24dcf28ebe0f_clause_0003"
     ]
   },
   {
-    "kb": "tech",
-    "question": "你们的性能测试是在什么硬件和系统环境下做的？",
-    "reference_answer": "测试环境：Intel Core i7-13700H（14 核 20 线程），32GB DDR5 RAM，Ubuntu 22.04 LTS，Python 3.12。",
+    "kb": "contract",
+    "question": "这个采购合同的总价里都包含了哪些费用？",
+    "reference_answer": "合同总价为含税价，税率13%，包含货物价款、包装费、运输费及送达指定地点的一切费用。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0014"
+      "436e24dcf28ebe0f_clause_0005"
     ]
   },
   {
-    "kb": "tech",
-    "question": "用FastAPI和Django做JSON接口，哪个处理请求更快？",
-    "reference_answer": "在JSON序列化场景（返回1KB JSON）下，FastAPI + Uvicorn为7200 QPS，Django + Gunicorn（sync）为1900 QPS。",
+    "kb": "contract",
+    "question": "货款什么时候付？发票和验收都弄好了，是不是马上就能打钱？",
+    "reference_answer": "甲方在收到乙方开具的增值税专用发票及货物验收合格证明后30日内，以银行转账方式支付合同总价款的95%；其余5%作为质保金，于质保期满且无质量问题后15日内无息支付。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0016"
+      "436e24dcf28ebe0f_clause_0006"
     ]
   },
   {
-    "kb": "tech",
-    "question": "用FastAPI开发一个有10个REST接口的标准增删改查微服务，大概要写多少行代码？",
-    "reference_answer": "FastAPI 约需 150 至 200 行代码（含 Pydantic Schema 定义）。",
+    "kb": "contract",
+    "question": "货送到我们公司要多久？运费谁来付啊？",
+    "reference_answer": "乙方应于合同生效后20个工作日内将货物送达甲方指定地点，运费由乙方承担。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0017"
+      "436e24dcf28ebe0f_clause_0009"
     ]
   },
   {
-    "kb": "tech",
-    "question": "Django和FastAPI的第三方包生态哪个更丰富？",
-    "reference_answer": "Django拥有Python Web框架中最庞大的第三方包生态（PyPI上约5000个django-*包），FastAPI的生态规模较小（约800个fastapi-*或专用于FastAPI的包）。",
+    "kb": "contract",
+    "question": "货到之后，我们公司需要在多长时间内检查货物的数量和外观？",
+    "reference_answer": "甲方在7个工作日内完成数量与外观验收。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0019"
+      "436e24dcf28ebe0f_clause_0010"
     ]
   },
   {
-    "kb": "tech",
-    "question": "我们打算开发一个新的微服务项目，想选一个高性能又支持异步的Python后端框架，有什么推荐吗？",
-    "reference_answer": "技术团队推荐以 FastAPI 作为主力 Web 框架，搭配 SQLAlchemy 2.0 异步 ORM 和 Alembic 数据库迁移工具，使用 Pydantic Settings 进行配置管理，使用 Uvicorn 作为生产级 ASGI 服务器，通过 Docker 进行容器化部署，通过 Prometheus + Grafana 进行性能监控。该方案适用于新启动的微服务项目、需要高性能异步处理的数据接口、前后端分离架构下的 REST API 服务、需要 WebSocket 实时通信的应用、以及需要自动生成 OpenAPI 文档的团队协作场景。",
+    "kb": "contract",
+    "question": "如果我收到的货验收不合格，供应商要怎么处理？",
+    "reference_answer": "甲方有权要求乙方在10日内更换或修复，相关费用由乙方承担。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0020"
+      "436e24dcf28ebe0f_clause_0011"
     ]
   },
   {
-    "kb": "tech",
-    "question": "我们现在的Django老系统想慢慢换成FastAPI，有什么推荐的迁移方法吗？",
-    "reference_answer": "建议采取「绞杀者模式」（Strangler Fig Pattern）进行渐进式迁移：第一步，在 Nginx 层面将新功能的路由指向 FastAPI 服务，旧功能继续由 Django 处理；第二步，逐个模块地将 Django 的逻辑抽取为独立的 FastAPI 微服务，同时保持 API 契约的向后兼容；第三步，当所有业务逻辑完成迁移后，将 Django 实例下线。整个迁移过程预计持续 3 至 6 个月，期间新旧服务通过 HTTP 协议进行通信，通过 API。",
+    "kb": "contract",
+    "question": "你们卖的货是不是全新没用过的？",
+    "reference_answer": "乙方保证货物为全新未使用产品，符合国家及行业标准。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0022"
+      "436e24dcf28ebe0f_clause_0013"
     ]
   },
   {
-    "kb": "tech",
-    "question": "PyTorch为什么调试起来比较方便？",
-    "reference_answer": "PyTorch的核心优势在于其动态计算图（Define-by-Run）的设计——计算图在运行时动态构建，这使得调试体验与普通的Python程序完全一致。开发者可以随时使用Python的print语句或pdb。",
+    "kb": "product",
+    "question": "P200网关能接多少种工业协议？支持Modbus和OPC UA吗？",
+    "reference_answer": "支持Modbus RTU/TCP、OPC UA、MQTT、BACnet等20余种工业协议解析。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0025"
+      "2767bcf0756add0c_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "PyTorch 2.0之后怎么在不改代码的情况下提升模型推理速度？",
-    "reference_answer": "自 2.0 版本起，PyTorch 引入了 torch.compile 功能，通过 JIT（即时编译）将动态图优化为静态图，在保持开发体验的同时大幅提升了推理性能。",
+    "kb": "product",
+    "question": "P200智能网关的增强版和标准版主要区别在哪儿？",
+    "reference_answer": "P200标准版不含5G；P200E增强版标配5G模组与4GB内存。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0026"
+      "2767bcf0756add0c_chunk_0001"
     ]
   },
   {
-    "kb": "tech",
-    "question": "TensorFlow现在还比PyTorch强吗？它在哪些地方还有优势？",
-    "reference_answer": "TensorFlow的市场份额自2020年以来持续下滑，已被PyTorch在学术界全面超越、在工业界快速追赶；但在移动端推理（TensorFlow Lite）和生产级模型服务（TensorFlow Serving）方面仍保持优势。",
+    "kb": "product",
+    "question": "P200智能网关能接多少种工业协议？支持自己写代码加功能吗？",
+    "reference_answer": "支持Modbus RTU/TCP、OPC UA、MQTT、BACnet等20余种工业协议解析；支持Docker容器化应用部署，提供Python/Node.js二次开发SDK。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0027"
+      "2767bcf0756add0c_parent_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "飞桨的OCR工具支持哪些语言？",
-    "reference_answer": "PaddleOCR预训练模型覆盖了简体中文、繁体中文、英文、日文、韩文等80多种语言。",
+    "kb": "product",
+    "question": "我公司需要做跨区域的数据备份，还想要专属客服，应该选哪个套餐？",
+    "reference_answer": "企业版：20TB 起售，子账号不限，支持审计日志、跨区域复制与专属客服。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0028"
+      "c7fed27109d0d342_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "中文文本嵌入用什么预训练模型比较多？",
-    "reference_answer": "在中文文本嵌入领域，BAAI 的 BGE 系列和 text2vec 系列是应用最广泛的两套预训练模型。",
+    "kb": "product",
+    "question": "M300视频会议终端适合多大的会议室用？装在多高比较合适？",
+    "reference_answer": "适用 8-16 人会议室，推荐安装高度 1.8-2.2 米。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0030"
+      "2f8eebc199399e62_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "哪个中文嵌入模型精度最高？",
-    "reference_answer": "BGE-large-zh-v1.5（1024维）是精度最高的中文嵌入模型之一。",
+    "kb": "product",
+    "question": "我们公司买了50个用户的企业版许可，现在想再加20个用户，要怎么算钱？",
+    "reference_answer": "按用户数授权：最小起订 50 用户，可追加，追加部分按剩余期限折算。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0031"
+      "aebca4d43a4d42c0_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "用BGE模型做向量检索时，为什么算出来的相似度不准？有什么要注意的设置？",
-    "reference_answer": "因为BGE模型体积大、推理速度慢，且两项工程实践建议：第一，嵌入模型应加 passage: 和 query: 前缀以匹配训练时的输入格式；第二，向量必须进行 L2 归一化以保证余弦相似度的正确计算。",
+    "kb": "product",
+    "question": "W80无线投屏盒子能投4K视频吗？延迟高不高？",
+    "reference_answer": "支持输出4K60Hz，延迟低于60毫秒。",
     "expected_chunk_ids": [
-      "38c37c4568212f38_chunk_0032"
+      "c804917b7e7b822d_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "你们的搜索功能是怎么把关键词搜索和语义搜索结合起来的？",
-    "reference_answer": "系统使用向量检索与 BM25 稀疏检索并行，RRF 算法融合排序结果。",
+    "kb": "product",
+    "question": "T15工控平板在户外阳光下能看清屏幕吗？",
+    "reference_answer": "能，屏幕亮度为1000尼特，阳光下可视。",
     "expected_chunk_ids": [
-      "dd0c1ccb-9de_chunk_0001"
+      "af130321081296d7_chunk_0000"
     ]
   },
   {
-    "kb": "tech",
-    "question": "如果我的问题回答不出来，系统会怎么处理？",
-    "reference_answer": "检索超时时跳过 Rerank，LLM 失败时返回检索摘要。",
+    "kb": "finance",
+    "question": "我上个月去上海出差住了三晚，每晚酒店花了650块，能全额报销吗？",
+    "reference_answer": "不能全额报销。住宿标准一线城市每晚600元，超标部分自理。",
     "expected_chunk_ids": [
-      "dd0c1ccb-9de_chunk_0002"
+      "a62add6bbf7f69dc_chunk_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我报销时用的发票抬头和税号填错了，还能报吗？",
+    "reference_answer": "发票抬头、税号必须与公司信息一致。",
+    "expected_chunk_ids": [
+      "a62add6bbf7f69dc_chunk_0001"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我上个月去上海出差住了两晚，酒店发票是每晚800块，能全额报销吗？",
+    "reference_answer": "不能全额报销。住宿标准一线城市每晚600元，超标部分自理。",
+    "expected_chunk_ids": [
+      "a62add6bbf7f69dc_parent_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我们部门12月想买一台新电脑，但预算里没列这项支出，该怎么走流程？",
+    "reference_answer": "资本性支出未列入预算的，一律报预算委员会审批。",
+    "expected_chunk_ids": [
+      "7ff37a5164c5688e_chunk_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我们部门要付一笔8万元的货款，需要谁来审批？",
+    "reference_answer": "单笔 5 万元至 30 万元：分管副总审批。",
+    "expected_chunk_ids": [
+      "fc50fe08098d20c3_chunk_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "新客户刚开始合作，能给多长的账期和多少信用额度？",
+    "reference_answer": "新客户默认 C 级，额度 50 万元、账期 30 天。",
+    "expected_chunk_ids": [
+      "024306afeda8af90_chunk_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我们部门想买一台3万元的服务器，需要走什么流程？",
+    "reference_answer": "预算外购置须专项审批；10万元以上设备采购须三家比价或招标，比价记录随付款凭证归档。",
+    "expected_chunk_ids": [
+      "0577947e68fbd327_chunk_0000"
+    ]
+  },
+  {
+    "kb": "finance",
+    "question": "我报销的时候交了两张连号的发票，财务说要重点审核，这是为什么呀？",
+    "reference_answer": "报销发票须查验真伪，连号发票、大额整数发票重点审核。",
+    "expected_chunk_ids": [
+      "61a13d6df6e3bf6b_chunk_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我早上有点事，能晚点来上班吗？最晚几点到不算迟到？",
+    "reference_answer": "可以弹性上班，可在8:30-9:30之间到岗，相应顺延下班时间；迟到30分钟以内每次扣款50元。",
+    "expected_chunk_ids": [
+      "473b25ae04355353_chunk_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我工作满3年了，能休多少天年假？可以拖到明年再休吗？",
+    "reference_answer": "满3年可休10天年假；年假当年有效，经批准可延至次年一季度。",
+    "expected_chunk_ids": [
+      "473b25ae04355353_chunk_0001"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我早上9点20分才到公司打卡，会被扣钱吗？",
+    "reference_answer": "迟到30分钟以内每次扣款50元。",
+    "expected_chunk_ids": [
+      "473b25ae04355353_parent_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我上季度绩效拿了A档，那这个季度的绩效工资能拿多少？",
+    "reference_answer": "绩效工资与季度考核结果挂钩：A档为100%。",
+    "expected_chunk_ids": [
+      "eab6a680d7b3bb5a_chunk_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我刚收到offer，上面写了试用期6个月，但合同签的是3年，这样合法吗？",
+    "reference_answer": "合法。3年期合同试用期不超过6个月。",
+    "expected_chunk_ids": [
+      "e821ee3194190a08_chunk_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我推荐了一个朋友来公司上班，他入职三个月后我能领多少内推奖金？",
+    "reference_answer": "被推荐人入职满 3 个月发放内推奖金，基层岗 2000 元、专业岗 5000 元。",
+    "expected_chunk_ids": [
+      "e821ee3194190a08_chunk_0001"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "我被内推成功入职了，什么时候能拿到推荐奖金？能拿多少？",
+    "reference_answer": "被推荐人入职满 3 个月发放内推奖金，基层岗 2000 元、专业岗 5000 元。",
+    "expected_chunk_ids": [
+      "e821ee3194190a08_parent_0000"
+    ]
+  },
+  {
+    "kb": "hr",
+    "question": "如果我连续两个季度绩效都是C，公司会怎么处理？",
+    "reference_answer": "连续两季度 C 或年度 D 的，进入绩效改进计划（PIP），期限 1-2 个月；改进不达标的依法调岗或解除。",
+    "expected_chunk_ids": [
+      "3624a634fe68e338_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们双十一期间对老客户和新客户分别有什么优惠？",
+    "reference_answer": "11月双十一促销期间，老客户推荐返现5%，新客首单9折。",
+    "expected_chunk_ids": [
+      "027ff6e6fc33d5d4_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们做一张名片，Logo放哪里、用什么材质，还有其他要注意的吗？",
+    "reference_answer": "名片为竖版，Logo放在右上角，信息放在左下角，需覆哑膜。",
+    "expected_chunk_ids": [
+      "9e56e35237d2df06_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们发一篇白皮书，后续能自动拆成哪些内容形式？",
+    "reference_answer": "一篇白皮书拆 1 场直播 + 4 条短视频 + 8 张图卡。",
+    "expected_chunk_ids": [
+      "837a35b7e7d633f5_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们投信息流广告时，一个广告组最少要准备几条创意啊？",
+    "reference_answer": "信息流广告按人群包分组，创意不少于 5 条/组。",
+    "expected_chunk_ids": [
+      "2fbe811bdc32455d_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们参加展会时，现场扫码留资的客户信息要什么时候录入CRM系统？",
+    "reference_answer": "名片信息当晚录入 CRM。",
+    "expected_chunk_ids": [
+      "076125ea8aa0ab02_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "写客户案例的时候，效果部分要写几个量化数据才算合格？",
+    "reference_answer": "实施效果部分要求量化数据不少于 3 个。",
+    "expected_chunk_ids": [
+      "cd7f1fca55b8b5cf_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们员工自己发抖音，能直接转发公司内容吗？",
+    "reference_answer": "员工个人号转发公司内容遵循自愿原则，市场部提供素材包。",
+    "expected_chunk_ids": [
+      "476355b620fae91e_chunk_0000"
+    ]
+  },
+  {
+    "kb": "marketing",
+    "question": "我们下半年的市场预算怎么确定？是全年一次性给完，还是分阶段调整？",
+    "reference_answer": "年度市场预算按预计营收的 6% 编制，Q1 一次性下达半年，下半年按上半年达成率调整。",
+    "expected_chunk_ids": [
+      "37c84ec53eb2a31e_chunk_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "我们Q3的营收完成情况怎么样？",
+    "reference_answer": "Q3营收8600万元，完成季度目标的96%。",
+    "expected_chunk_ids": [
+      "497e3b3fb2ac068e_chunk_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "我们海外业务接下来几个月会重点做哪两个国家？",
+    "reference_answer": "海外业务 Q4 聚焦两个重点国家，其余市场收缩投入。",
+    "expected_chunk_ids": [
+      "497e3b3fb2ac068e_chunk_0001"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "我们第三季度的营收完成情况怎么样？",
+    "reference_answer": "Q3 营收 8600 万元，完成季度目标的 96%。",
+    "expected_chunk_ids": [
+      "497e3b3fb2ac068e_parent_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "P300边缘AI网关什么时候能上市？",
+    "reference_answer": "目标2027年Q1上市。",
+    "expected_chunk_ids": [
+      "baff11fca7febbe6_chunk_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "P300这款产品大概什么时候能上市？",
+    "reference_answer": "7年Q1上市。",
+    "expected_chunk_ids": [
+      "baff11fca7febbe6_chunk_0001"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "P300边缘AI网关什么时候能上市？",
+    "reference_answer": "目标2027年Q1上市。",
+    "expected_chunk_ids": [
+      "baff11fca7febbe6_parent_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "周例会纪要里行动项必须写清楚哪些内容才算合格？",
+    "reference_answer": "行动项三要素：责任人、完成时限、验收标准，缺一不可。",
+    "expected_chunk_ids": [
+      "b483e4215efdbf78_chunk_0000"
+    ]
+  },
+  {
+    "kb": "meeting",
+    "question": "我们仓库消防通道老被东西堵住，公司打算怎么解决这个问题？",
+    "reference_answer": "库房消防通道被临时物料占用的问题已当场清退，安委会决议每周五下午执行消防安全周巡查，由安全员轮值并签字留痕。",
+    "expected_chunk_ids": [
+      "cbf3a8b41b01f61e_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "入职培训第一天下午主要学什么呀？",
+    "reference_answer": "第一天下午14:00-15:30学习制度速览：考勤、报销、信息安全三大高频制度；15:45-17:00进行办公工具实操：IM、邮件、CRM、VPN使用。",
+    "expected_chunk_ids": [
+      "87001a9a32305e57_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "刚入职的研发新人，第一个月主要要干啥呀？",
+    "reference_answer": "第一阶段（第 1 个月）：环境与规范，包括完成开发环境、代码仓库权限与 CI 流水线上手；掌握编码规范、分支策略与 Code Review 流程；产出独立提交 3 个通过评审的小改动。",
+    "expected_chunk_ids": [
+      "8d1fc6a0e190d0eb_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "我们客户说‘你们价格比别家高’，该怎么说服他们？",
+    "reference_answer": "用 TCO 对比（含运维人力与故障损失），非单一采购价。",
+    "expected_chunk_ids": [
+      "bd5f64785a0c488b_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "我想给经常迟到的同事提反馈，但怕他生气，有什么不伤和气的方法吗？",
+    "reference_answer": "使用 SBI 反馈模型：情境（Situation）→ 行为（Behavior）→ 影响（Impact）；同时避免负面反馈四禁忌：贴标签、翻旧账、当众批评、泛化人格。",
+    "expected_chunk_ids": [
+      "ceb6e25859488c02_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "如果我在外面用咖啡店的Wi-Fi处理工作，要注意什么安全问题？",
+    "reference_answer": "公共 Wi-Fi 下禁止访问核心系统；外出办公强制 VPN。",
+    "expected_chunk_ids": [
+      "bf4cbfe11437f9ae_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "我打电话投诉，客服响了好久才接，这算违规吗？一般要几秒内接啊？",
+    "reference_answer": "在线客服需在30秒内接起，电话客服需在3声内接起。",
+    "expected_chunk_ids": [
+      "84f64069f7f238cf_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "我刚通过试讲评审，现在能拿多少课时费？",
+    "reference_answer": "初级讲师课酬为300元/课时。",
+    "expected_chunk_ids": [
+      "5f77f7aea1cb20ca_chunk_0000"
+    ]
+  },
+  {
+    "kb": "training",
+    "question": "我给客户送了个价值600元的礼品，需要提前报备吗？",
+    "reference_answer": "需要事前申报，因为商务礼品限额为500元，超限须事前申报。",
+    "expected_chunk_ids": [
+      "58ad5cd36eb2e89f_chunk_0000"
     ]
   }
 ]

@@ -111,6 +111,13 @@ def main():
         "policy": "rag_policy",
         "service": "rag_service",
         "tech": "rag_tech",
+        "contract": "rag_contract",
+        "product": "rag_product",
+        "finance": "rag_finance",
+        "hr": "rag_hr",
+        "marketing": "rag_marketing",
+        "meeting": "rag_meeting",
+        "training": "rag_training",
     }
     db_path = "lancedb_data"
     out = []

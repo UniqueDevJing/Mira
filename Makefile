@@ -2,7 +2,7 @@
 # 本地: make test | make lint | make validate
 # CI:   make test-ci   (带覆盖率门禁, 低于 80% 失败)
 
-.PHONY: test test-ci eval-routing eval-preguard eval-preguard-real eval-fanout-ab eval-gate eval-ab lint format test-frontend validate check-size all
+.PHONY: test test-ci eval-routing eval-preguard eval-preguard-real eval-fanout-ab eval-gate eval-ab eval-kb lint format test-frontend validate check-size all
 
 test:
 	pytest -p no:cacheprovider
@@ -29,6 +29,12 @@ eval-preguard:
 # 依赖本地模型+语料, 不进 CI; 结论变化时人工复核 scripts/eval_preguard_realretrieval.py。
 eval-preguard-real:
 	python scripts/eval_preguard_realretrieval.py
+
+# KB 级召回评测 (生产对齐): tests/eval_dataset_kb.json (10 KB 分层抽样, qwen-plus 生成)
+# → 真实 VectorStore 首阶段检索 → Recall@K/MRR/延迟, 输出 data/eval/kb_retrieval_summary.json。
+# 离线无需 rerank; 重生成评测集: python scripts/gen_kb_eval.py --max-per-kb 8
+eval-kb:
+	python scripts/eval_kb_retrieval.py
 
 # #3 跨库 rerank 端到端 A/B: 12 道真实路由题 × OFF(重排关)/GLOBAL(#3 全局重排)/PER-KB(旧逐库)
 # 三策略 gold 命中对比; --cap 可覆盖候选池预算(验证 10 vs 20 对跨库重排价值的影响)。
