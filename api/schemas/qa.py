@@ -193,3 +193,4 @@ class QAResponse(BaseModel):
     memory_used: list[dict] = Field(
         default_factory=list, description="本轮命中的长期记忆条目 (question/answer/score)"
     )
+    ocr_text: str = Field(default="", description="图片 OCR 识别出的文字 (仅图片提问时非空, 供用户核对识别结果)")

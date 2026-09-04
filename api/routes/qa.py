@@ -31,8 +31,8 @@ def _rate_limited(fn):
     return limiter.limit(f"{settings.rate_limit_per_minute}/minute")(fn)
 
 
-def _merge_image_text(image_base64: str, question: str) -> str:
-    """图片输入 → OCR 提取文字 → 并入问题。
+def _merge_image_text(image_base64: str, question: str) -> tuple[str, str]:
+    """图片输入 → OCR 提取文字 → 并入问题。返回 (合并后问题, OCR 识别文字)。
 
     优先直调 RapidOCR (自然图像), 未安装时抛 400 给出明确提示。
     OCR 失败不静默: 多模态入口失败让用户知道原因, 而非当无图处理。
@@ -91,9 +91,9 @@ def _merge_image_text(image_base64: str, question: str) -> str:
                 texts.append(str(t))
     ocr_text = " ".join(texts).strip()
     if not ocr_text:
-        return question  # 图里没字, 退化为纯文本问题
+        return question, ""  # 图里没字, 退化为纯文本问题
     merged = f"{question}\n[图片文字] {ocr_text[:2000]}" if question else f"[图片文字] {ocr_text[:2000]}"
-    return merged.strip()
+    return merged.strip(), ocr_text
 
 
 async def _remember_async(user_id: str, question: str, answer: str) -> None:
@@ -131,8 +131,9 @@ async def ask_question(req: QARequest, request: Request):
 
     # ── 多模态输入: 图片 OCR 并入问题文本 (失败给出明确提示, 不静默吞) ──
     question = req.question
+    ocr_text = ""
     if req.image_base64:
-        question = _merge_image_text(req.image_base64, question)
+        question, ocr_text = _merge_image_text(req.image_base64, question)
         if not question.strip():
             raise HTTPException(status_code=400, detail="图片 OCR 未提取到文字, 请直接输入文本问题或更换图片。")
 
@@ -268,6 +269,7 @@ async def ask_question(req: QARequest, request: Request):
         message_type=message_type,
         agent="rag",
         memory_used=memory_used,
+        ocr_text=ocr_text,
     )
 
 
