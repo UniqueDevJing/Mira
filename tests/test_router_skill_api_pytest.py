@@ -46,11 +46,28 @@ def test_rule_route_tech():
 
 
 def test_rule_route_direct():
-    d = client.post("/api/v1/qa/ask", json={"question": "你好"}).json()
+    """手动指定 direct: 跳过 Agent 分发直通 (skill 指定时 Agent 层不接管)。"""
+    d = client.post("/api/v1/qa/ask", json={"question": "你好", "skill": "direct"}).json()
     assert d["skill"] == "direct"
     assert d["routing_source"] == "rule"
-    assert d["sources"] == []
     assert d["kb_id"] is None
+
+
+def test_chitchat_agent_takes_over():
+    """多 Agent 框架: 闲聊由 chitchat Agent 接管 (mock LLM, 不发真实请求)。"""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    fake_resp = MagicMock()
+    fake_resp.content = "你好呀～"
+    with patch("api.core.llm_client.get_llm_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat = AsyncMock(return_value=fake_resp)
+        mock_get.return_value = mock_client
+        d = client.post("/api/v1/qa/ask", json={"question": "你好"}).json()
+    assert d["message_type"] == "chat"
+    assert d["agent"] == "chitchat"
+    assert d["answer"] == "你好呀～"
+    assert d["sources"] == []
 
 
 def test_response_meta_fields():

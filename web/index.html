@@ -73,6 +73,15 @@
 .status-upload { background: rgba(99,102,241,.12); color: var(--primary); }
 .kb-empty-msg { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
+/* ── 多 Agent 框架卡片: 投诉工单 / 待确认操作 ── */
+.ticket-card{margin:10px 0 4px;padding:10px 12px;border-radius:10px;font-size:13px;
+  background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);}
+.ticket-card.escalated{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.4);}
+.ticket-card.pending-op{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.4);}
+.ticket-card .ticket-title{font-weight:600;margin-bottom:4px;}
+.ticket-card .ticket-meta{color:var(--text-3);font-size:12px;margin-bottom:6px;}
+.ticket-card .confirm-op-btn{margin-top:2px;}
+
 @media (max-width: 768px) {
   .chat-flow { padding: 16px 12px 0; }
   .input-area { padding: 0 12px 12px; }
@@ -147,8 +156,8 @@
   <!-- 输入框：固定底部 -->
   <footer id="inputAreaWrap" class="input-area">
     <div class="input-container" id="inputWrapper">
-      <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx" multiple>
-      <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库"></button>
+      <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx,image/png,image/jpeg,image/webp" multiple>
+      <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库 / 选择图片提问"></button>
       <textarea id="questionInput" rows="1" placeholder="基于知识库提问..." autocomplete="off"></textarea>
       <button id="sendBtn" class="send-btn" title="发送" disabled></button>
       <button id="stopBtn" class="stop-btn" title="停止生成"></button>
@@ -388,7 +397,13 @@
     sidebarUploadBtn.addEventListener('click',function(){fileInput.click();});
     // 输入框中的上传按钮
     if(uploadTrigger)uploadTrigger.addEventListener('click',function(){fileInput.click();});
-    if(fileInput)fileInput.addEventListener('change',function(){if(fileInput.files.length){handleKBUpload(Array.from(fileInput.files));fileInput.value='';}});
+    if(fileInput)fileInput.addEventListener('change',function(){
+      if(!fileInput.files.length)return;
+      var files=Array.from(fileInput.files);
+      var img=files.find(function(f){return f.type&&f.type.indexOf('image/')===0;});
+      if(img){askWithImage(img);}else{handleKBUpload(files);}
+      fileInput.value='';
+    });
 
     questionInput.addEventListener('input',function(){autoResize(questionInput);toggleSendBtn();});
     questionInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!isStreaming){e.preventDefault();askQuestion();}});
@@ -423,7 +438,52 @@
         if(aid)regenerate(aid);
         return;
       }
+      var confirmBtn=e.target.closest('.confirm-op-btn');
+      if(confirmBtn){
+        confirmPendingOperation(confirmBtn.getAttribute('data-pending-id'),confirmBtn);
+        return;
+      }
     });
+
+    /* ── 多 Agent: 高危操作二次确认 ── */
+    function confirmPendingOperation(pid,btn){
+      if(!pid||btn){btn.disabled=true;btn.textContent='执行中...';}
+      fetch(API+'/qa/ask',{
+        method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),
+        body:JSON.stringify({question:_lastQuestion||'确认执行操作',confirm_operation:true,pending_operation_id:pid,session_id:RAG.getSessionId()})
+      }).then(function(r){return r.json();}).then(function(d){
+        appendAssistantMessage(d.answer||'操作完成');
+        if(btn&&btn.closest('.ticket-card'))btn.closest('.ticket-card').remove();
+      }).catch(function(){RAG.toast('确认请求失败','err');if(btn){btn.disabled=false;btn.textContent='确认执行';}});
+    }
+
+    function appendAssistantMessage(content){
+      var div=document.createElement('div');div.className='msg msg-assistant';
+      div.innerHTML='<div class="msg-body"><div class="answer-text">'+RAG.renderMarkdown(content)+'</div></div>'+
+        '<div class="msg-avatar">'+RAG.icon('robot')+'</div>';
+      chatContainer.appendChild(div);scrollToBottom();
+      chatHistory.push({role:'assistant',content:content});
+    }
+
+    /* ── 多模态: 图片提问 (OCR 后并入问题, 走非流式 /ask) ── */
+    function askWithImage(file){
+      var reader=new FileReader();
+      reader.onload=function(){
+        var base64=String(reader.result||'').split(',')[1]||'';
+        var question=questionInput.value.trim()||'请看图片里的内容';
+        appendUserMessage('🖼 [图片] '+question);
+        chatHistory.push({role:'user',content:question});
+        questionInput.value='';autoResize(questionInput);toggleSendBtn();hideEmptyState();
+        createStreamingCard();setPipelineStep('route','active');updateUIState(true);
+        fetch(API+'/qa/ask',{
+          method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),
+          body:JSON.stringify({question:question,image_base64:base64,top_k:5,session_id:RAG.getSessionId()})
+        }).then(function(r){return r.json();}).then(function(d){
+          finalizeAnswer(d.answer||'(无内容)',{message_type:d.message_type||'consult',agent:d.agent||'rag',kb_id:d.kb_id,routing_source:d.routing_source,done:d},(d.sources||[]).map(function(s){return{title:s.id,score:s.score};}),d.retrieval_meta);
+        }).catch(function(err){handleError((err&&err.message)||'图片提问失败');});
+      };
+      reader.readAsDataURL(file);
+    }
 
     if(chatFlow)chatFlow.addEventListener('scroll',_onChatScroll);
     if(scrollBottomBtn)scrollBottomBtn.addEventListener('click',function(){if(chatFlow)chatFlow.scrollTop=chatFlow.scrollHeight;_autoScroll=true;scrollBottomBtn.hidden=true;});
@@ -477,8 +537,15 @@
           events.forEach(function(ev){
             if(ev.type==='meta'){
               metaInfo=ev;
-              setPipelineStep('route','done');
-              setPipelineStep('retrieve','active');
+              metaInfo.message_type=ev.message_type||'consult';
+              metaInfo.agent=ev.agent||'rag';
+              if(metaInfo.message_type!=='consult'){
+                // Agent 接管: 闲聊/投诉/操作不走检索链路, 步骤条直接收尾
+                setPipelineStep('route','done');setPipelineStep('retrieve','skip');setPipelineStep('rerank','skip');setPipelineStep('generate','active');
+              } else {
+                setPipelineStep('route','done');
+                setPipelineStep('retrieve','active');
+              }
             }
             else if(ev.type==='delta'){
               if(!_firstDeltaSeen){_firstDeltaSeen=true;setPipelineStep('generate','active');}
@@ -624,13 +691,30 @@
     var actionsHtml='<div class="answer-actions" data-answer-id="'+_currentAnsId+'">'+
       '<button class="action-btn" data-copy-answer title="复制答案">'+RAG.icon('copy')+' 复制</button>'+
       '<button class="action-btn" data-regenerate title="重新生成">'+RAG.icon('refresh')+' 重新生成</button></div>';
+    // ── 多 Agent 框架卡片: 投诉工单 / 待确认高危操作 ──
+    var extrasHtml='';
+    var doneInfo=metaInfo&&metaInfo.done;
+    if(doneInfo&&doneInfo.ticket){
+      var tk=doneInfo.ticket;
+      extrasHtml+='<div class="ticket-card'+(tk.escalated?' escalated':'')+'">'+
+        '<div class="ticket-title">🎫 投诉工单 '+RAG.escapeHtml(tk.ticket_id)+'</div>'+
+        '<div class="ticket-meta">状态: '+RAG.escapeHtml(tk.status)+' · 情绪等级: '+RAG.escapeHtml(tk.sentiment)+
+        (tk.escalated?' · <b>已升级人工</b>':'')+'</div></div>';
+    }
+    if(doneInfo&&doneInfo.pending_operation){
+      var po=doneInfo.pending_operation;
+      extrasHtml+='<div class="ticket-card pending-op" data-pending-id="'+RAG.escapeHtml(po.pending_id)+'">'+
+        '<div class="ticket-title">⚠️ 待确认操作: '+RAG.escapeHtml(po.label)+'</div>'+
+        '<div class="ticket-meta">该操作不可撤销, 请谨慎确认。</div>'+
+        '<button class="action-btn confirm-op-btn" data-pending-id="'+RAG.escapeHtml(po.pending_id)+'">确认执行</button></div>';
+    }
     var texts=chatContainer.querySelectorAll('.answer-text[id$="_text"]');
     var bodyEl=texts.length>0?texts[texts.length-1].parentElement:null;
     if(bodyEl){
       if(_currentAnsId)_answerCache[_currentAnsId]=fullAnswer;   // 全文存缓存, 复制时读缓存而非 DOM 属性(去重)
       // 仅更新答案文本节点, 保留流式阶段已渲染的 .pipeline-steps(检索过程芯片常驻)与 .retrieval-viz(检索可视化)
       texts[texts.length-1].innerHTML=RAG.renderMarkdown(fullAnswer);
-      bodyEl.insertAdjacentHTML('beforeend', (pipelineHtml?'<div class="pipeline-badge">'+pipelineHtml+'</div>':'')+latencyHtml+actionsHtml);
+      bodyEl.insertAdjacentHTML('beforeend', extrasHtml+(pipelineHtml?'<div class="pipeline-badge">'+pipelineHtml+'</div>':'')+latencyHtml+actionsHtml);
     }
     chatHistory.push({role:'assistant',content:fullAnswer});scrollToBottom();
   }
@@ -664,8 +748,16 @@
     if(q)startStream(q);
   }
 
+  function intentLabel(t){
+    return {consult:'咨询',chat:'闲聊',complaint:'投诉',operation:'操作'}[t]||t;
+  }
   function buildPipeline(meta){
     var routing=meta.routing_source||'';var kbId=meta.kb_id||'';var degLevel=meta.degradation_level||0;var steps=[];
+    if(meta.message_type&&meta.message_type!=='consult'){
+      steps.push('<span class="pipeline-step done" title="意图分类">意图: '+intentLabel(meta.message_type)+'</span>');
+      steps.push('<span class="pipeline-step done" title="执行 Agent">Agent: '+(meta.agent||'agent')+'</span>');
+      if(meta.agent==='chitchat'){steps.push('<span class="pipeline-step done">直达 LLM (未检索)</span>');return steps.join('');}
+    }
     steps.push('<span class="pipeline-step done">'+(routing||'路由')+'</span>');
     if(kbId)steps.push('<span class="pipeline-step done">'+kbId+(degLevel>0?' L'+degLevel:'')+'</span>');
     if(meta.rerank_ms)steps.push('<span class="pipeline-step done">重排 '+meta.rerank_ms+'ms</span>');

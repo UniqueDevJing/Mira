@@ -46,6 +46,17 @@ class QARequest(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
         description="多轮会话 ID: 携带后服务端按 session 维护历史(刷新/换设备不丢), 覆盖 history 字段, TTL 30min",
     )
+    # ── 多 Agent 框架扩展 (全部带默认值, 旧客户端零破坏) ──
+    image_base64: str | None = Field(
+        default=None,
+        description="图片输入(纯 base64, 不含 data: 前缀): OCR 提取文字后并入问题。需安装 rapidocr, 失败返回 400",
+    )
+    confirm_operation: bool = Field(
+        default=False, description="操作 Agent 二次确认标志: confirm=true + pending_operation_id 执行高危操作"
+    )
+    pending_operation_id: str | None = Field(
+        default=None, max_length=32, description="操作 Agent 待确认操作 ID (来自上一轮响应 pending_operation.pending_id)"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -158,3 +169,15 @@ class QAResponse(BaseModel):
     retrieval_meta: dict = Field(default_factory=dict, description="检索元信息: top1_score/result_count/cross_kb")
     # 拒答分级: 仅当答案确为拒答时非空。前端据此渲染候选来源 + 引导追问, 替代纯文本死胡同。
     refusal: RefusalInfo | None = Field(default=None, description="拒答分级元数据(附候选来源/引导追问), 非拒答时为空")
+    # ── 多 Agent 框架扩展 (全部带默认值, 旧客户端零破坏) ──
+    message_type: str = Field(
+        default="consult", description="意图分类: consult(咨询)/chat(闲聊)/complaint(投诉)/operation(操作)"
+    )
+    agent: str = Field(default="rag", description="执行 Agent: rag/chitchat/complaint/operation")
+    ticket: dict | None = Field(default=None, description="投诉工单信息 (仅投诉 Agent 返回)")
+    pending_operation: dict | None = Field(
+        default=None, description="待确认高危操作信息 (仅操作 Agent 高危分支返回)"
+    )
+    memory_used: list[dict] = Field(
+        default_factory=list, description="本轮命中的长期记忆条目 (question/answer/score)"
+    )

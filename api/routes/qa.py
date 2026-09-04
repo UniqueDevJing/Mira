@@ -31,6 +31,74 @@ def _rate_limited(fn):
     return limiter.limit(f"{settings.rate_limit_per_minute}/minute")(fn)
 
 
+def _merge_image_text(image_base64: str, question: str) -> str:
+    """图片输入 → OCR 提取文字 → 并入问题。
+
+    优先直调 RapidOCR (自然图像), 未安装时抛 400 给出明确提示。
+    OCR 失败不静默: 多模态入口失败让用户知道原因, 而非当无图处理。
+    """
+    import base64
+    import binascii
+
+    import numpy as np
+
+    try:
+        raw = base64.b64decode(image_base64, validate=False)
+    except (binascii.Error, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"图片 base64 解码失败: {e}") from e
+    if not raw:
+        raise HTTPException(status_code=400, detail="图片内容为空。")
+
+    try:
+        import cv2
+
+        from engines.parsing.ocr import _ensure_rapidocr, _get_ocr
+
+        _ensure_rapidocr()
+        ocr = _get_ocr()
+    except ImportError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"图片理解依赖 OCR 组件未安装 ({e.__class__.__name__}), 请直接输入文本问题, 或安装 rapidocr_onnxruntime 后重试。",
+        ) from e
+
+    import cv2
+
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="图片格式无法解析, 请提供 PNG/JPG。")
+
+    result, _ = ocr(img)
+    texts = [t for _, t, c in (result or []) if t and c >= 0.3]
+    ocr_text = " ".join(texts).strip()
+    if not ocr_text:
+        return question  # 图里没字, 退化为纯文本问题
+    merged = f"{question}\n[图片文字] {ocr_text[:2000]}" if question else f"[图片文字] {ocr_text[:2000]}"
+    return merged.strip()
+
+
+async def _remember_async(user_id: str, question: str, answer: str) -> None:
+    """长期记忆异步写入: 永不抛出, 失败仅记日志 (记忆层整体降级安全)。"""
+    try:
+        from api.core.memory_layer import remember
+
+        remember(user_id, question, answer)
+    except Exception as e:  # noqa: BLE001 — 记忆写入绝不可影响问答主流程
+        logger.warning("长期记忆异步写入异常(忽略): %s", str(e)[:160])
+
+
+@router.get("/tickets")
+async def list_tickets_endpoint(request: Request, limit: int = 50):
+    """投诉工单列表 (运维/客服后台用)。"""
+    from api.core.agents import list_tickets
+
+    principal = get_principal(request)
+    if principal.allowed_kbs is not None and not principal.allowed_kbs:
+        raise HTTPException(status_code=403, detail="无权限查看工单")
+    return {"tickets": list_tickets(limit=max(1, min(limit, 200)))}
+
+
 @router.post("/ask", response_model=QAResponse)
 @_rate_limited
 async def ask_question(req: QARequest, request: Request):
@@ -43,16 +111,88 @@ async def ask_question(req: QARequest, request: Request):
         if kb is not None and kb not in principal.allowed_kbs:
             raise HTTPException(status_code=403, detail=f"该 API Key 无权访问知识库: {req.skill}")
 
+    # ── 多模态输入: 图片 OCR 并入问题文本 (失败给出明确提示, 不静默吞) ──
+    question = req.question
+    if req.image_base64:
+        question = _merge_image_text(req.image_base64, question)
+        if not question.strip():
+            raise HTTPException(status_code=400, detail="图片 OCR 未提取到文字, 请直接输入文本问题或更换图片。")
+
+    # ── 意图分类 (规则, 零延迟) → 四路分发: 咨询走 RAG, 其余由对应 Agent 接管 ──
+    from api.core.agents import (
+        TYPE_CHAT,
+        TYPE_COMPLAINT,
+        TYPE_OPERATION,
+        classify_message,
+        handle_chitchat,
+        handle_complaint,
+        handle_operation,
+    )
+
+    message_type, sentiment = classify_message(question)
+    agent_result: dict | None = None
+
+    if req.confirm_operation or req.pending_operation_id:
+        # 二次确认流: 无论分类结果直接进操作 Agent 确认分支
+        message_type = TYPE_OPERATION
+        agent_result = handle_operation(question, confirm=req.confirm_operation,
+                                        pending_id=req.pending_operation_id)
+    elif message_type == TYPE_CHAT and not req.skill:
+        agent_result = await handle_chitchat(question)
+    elif message_type == TYPE_COMPLAINT and not req.skill:
+        agent_result = await handle_complaint(question, sentiment, user_id=principal.key_id)
+    elif message_type == TYPE_OPERATION and not req.skill:
+        agent_result = handle_operation(question)
+
+    if agent_result is not None:
+        agent_latency = (time.time() - start) * 1000
+        _log_qa_async(
+            question=question,
+            answer=agent_result.get("answer", ""),
+            skill=agent_result.get("agent", ""),
+            kb_id=None,
+            routing_source="agent",
+            degradation_level=0,
+            latency_ms=agent_latency,
+            tokens_total=0,
+            sources=[],
+        )
+        return QAResponse(
+            answer=agent_result["answer"],
+            message_type=agent_result.get("message_type", message_type),
+            agent=agent_result.get("agent", "agent"),
+            ticket=agent_result.get("ticket"),
+            pending_operation=agent_result.get("pending_operation"),
+            latency_ms=round(agent_latency, 2),
+            latency_breakdown=agent_result.get("latency_breakdown", {}),
+        )
+
+    # ── 长期记忆层: 提问前召回该用户相关历史, 注入为对话历史 ──
+    memory_used: list[dict] = []
+    history_turns: list = list(req.history)
+    if principal.key_id:
+        from api.core.memory_layer import recall
+
+        memory_used = recall(principal.key_id, question, top_k=3)
+    if memory_used:
+        from api.schemas.qa import ChatTurn
+
+        injected: list = []
+        for m in memory_used:
+            injected.append(ChatTurn(role="user", content=f"[历史提问] {m['question']}"))
+            injected.append(ChatTurn(role="assistant", content=f"[历史回答] {m['answer']}"))
+        history_turns = injected + history_turns
+
     # 编排层: Router 路由 → Skill 执行（分阶段超时/降级/跨库兜底）
     try:
         result = await orchestrate(
-            req.question,
+            question,
             skill=req.skill,
             top_k=req.top_k,
             enable_self_retrieval=req.enable_self_retrieval,
             temperature=req.temperature,
             mode=req.mode,
-            history=req.history,
+            history=history_turns,
             session_id=req.session_id,
             allowed_kbs=principal.allowed_kbs,
             owner=principal.key_id,  # S6: session 归属绑定
@@ -62,8 +202,15 @@ async def ask_question(req: QARequest, request: Request):
     latency_ms = (time.time() - start) * 1000
 
     token_usage = result.get("token_usage") or {}
+
+    # ── 长期记忆写入 (异步, 失败仅记日志不阻断响应) ──
+    if principal.key_id and result.get("answer"):
+        asyncio.get_running_loop().create_task(
+            _remember_async(principal.key_id, question, result.get("answer", ""))
+        )
+
     _log_qa_async(
-        question=req.question,
+        question=question,
         answer=result.get("answer", ""),
         skill=result.get("skill", ""),
         kb_id=result.get("kb_id"),
@@ -89,6 +236,9 @@ async def ask_question(req: QARequest, request: Request):
         rewritten_queries=result.get("rewritten_queries", []),
         qa_metrics=result.get("qa_metrics", {}),
         graph_context=result.get("graph_context") or None,  # 契约修复: 此前 schema 声明但 route 从未传入, 恒 null
+        message_type=message_type,
+        agent="rag",
+        memory_used=memory_used,
     )
 
 
@@ -125,6 +275,57 @@ async def ask_question_stream(req: QARequest, request: Request):
 
     start = time.time()
 
+    # ── 多 Agent 分发 (流式): 闲聊/投诉/操作由对应 Agent 接管, 合成 SSE 事件流 ──
+    from api.core.agents import (
+        TYPE_CHAT,
+        TYPE_COMPLAINT,
+        TYPE_OPERATION,
+        classify_message,
+        handle_chitchat,
+        handle_complaint,
+        handle_operation,
+    )
+
+    _mt, _sentiment = classify_message(req.question)
+    _agent_result: dict | None = None
+    if req.confirm_operation or req.pending_operation_id:
+        _agent_result = handle_operation(req.question, confirm=req.confirm_operation,
+                                         pending_id=req.pending_operation_id)
+    elif _mt == TYPE_CHAT and not req.skill:
+        _agent_result = await handle_chitchat(req.question)
+    elif _mt == TYPE_COMPLAINT and not req.skill:
+        _agent_result = await handle_complaint(req.question, _sentiment, user_id=principal.key_id)
+    elif _mt == TYPE_OPERATION and not req.skill:
+        _agent_result = handle_operation(req.question)
+
+    if _agent_result is not None:
+        _agent_answer = _agent_result.get("answer", "")
+
+        async def _agent_event_stream():
+            try:
+                yield f"data: {json.dumps({'type': 'meta', 'message_type': _agent_result.get('message_type', _mt), 'agent': _agent_result.get('agent', 'agent'), 'skill': '', 'kb_id': None, 'routing_source': 'agent'}, ensure_ascii=False)}\n\n"
+                # 逐段推送, 前端按 delta 渲染
+                step = max(1, len(_agent_answer) // 4)
+                for i in range(0, len(_agent_answer), step):
+                    yield f"data: {json.dumps({'type': 'delta', 'content': _agent_answer[i:i + step]}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'answer': _agent_answer, 'message_type': _agent_result.get('message_type', _mt), 'agent': _agent_result.get('agent', 'agent'), 'ticket': _agent_result.get('ticket'), 'pending_operation': _agent_result.get('pending_operation'), 'degradation_level': 0}, ensure_ascii=False)}\n\n"
+            except Exception:  # noqa: BLE001
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'Agent 处理中断'}, ensure_ascii=False)}\n\n"
+            _log_qa_async(
+                question=req.question,
+                answer=_agent_answer,
+                skill=_agent_result.get("agent", ""),
+                kb_id=None,
+                routing_source="agent",
+                degradation_level=0,
+                latency_ms=int((time.time() - start) * 1000),
+                tokens_total=0,
+                sources=[],
+            )
+
+        return StreamingResponse(_agent_event_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     async def _event_stream():
         meta, done, sources = {}, {}, []
         try:
@@ -143,6 +344,8 @@ async def ask_question_stream(req: QARequest, request: Request):
                 # 流式协议 meta/done 分两个事件, 补 QA 日志需从 meta 取路由字段、done 取答案/用量
                 if ev.get("type") == "meta":
                     meta = ev
+                    ev.setdefault("message_type", "consult")  # 契约一致: 咨询路径也带意图字段
+                    ev.setdefault("agent", "rag")
                 elif ev.get("type") == "sources":
                     sources = ev.get("sources", [])
                 elif ev.get("type") == "done":
