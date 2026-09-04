@@ -292,6 +292,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 
   var API = RAG.API || '/api/v1';
   var currentController = null, chatHistory = [], isStreaming = false, currentSid = '';
+  var _currentAgent = '';       // Agent 切换条当前锁定 (空=自动分流); 必须在 IIFE 顶层, startStream/askWithImage 才能访问
   var uploadedDocs = {}, localUploads = [];
 
   var $ = function(id){ return document.getElementById(id); };
@@ -515,7 +516,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
     sendBtn.addEventListener('click',function(){if(!sendBtn.disabled)askQuestion();});
     stopBtn.addEventListener('click',function(){if(currentController)stopGeneration();});
     // ── 多 Agent: 切换条 (常驻, 随时可切) ──
-    var _currentAgent='';
     var agentBar=$('agentBar');
     if(agentBar)agentBar.addEventListener('click',function(e){
       var chip=e.target.closest('.agent-chip');
