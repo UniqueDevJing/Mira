@@ -1,4 +1,4 @@
-# 智答 · 基于 RAG 的多模态智能客服系统
+# Mira 智答 · 基于 RAG 的多模态智能客服系统
 
 ![Tests](https://img.shields.io/badge/tests-534%20passed-10b981)
 ![Python](https://img.shields.io/badge/python-3.12%2B-4f6ef7)
@@ -66,8 +66,8 @@ flowchart TD
 ## 🚀 快速开始
 
 ```bash
-git clone git@github.com:UniqueDevJing/rag-2.0.git
-cd rag-2.0
+git clone git@github.com:UniqueDevJing/Mira.git
+cd Mira
 pip install -e ".[dev]"
 
 # 配置 .env (最小集)
