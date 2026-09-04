@@ -180,7 +180,8 @@ def _vision_answer(question: str, image_description: str, image_b64: str,
                         c = (hit.get("content") or "").strip()
                         if c and hit.get("score", 0) >= 0.55:
                             snippets.append(f"[{kb}] {c[:300]}")
-                except Exception:  # noqa: BLE001 — 单库失败跳过
+                except Exception as e:  # noqa: BLE001 — 单库失败跳过
+                    logger.debug("视觉问答片段检索跳过 KB %s: %s", kb, str(e)[:100])
                     continue
         except Exception as e:  # noqa: BLE001 — 检索失败则纯看图作答
             logger.warning("视觉问答检索片段失败(降级纯看图): %s", str(e)[:120])
