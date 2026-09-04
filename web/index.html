@@ -667,6 +667,14 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
     _streamFull='';_streamDirty=false;_firstDeltaSeen=false;_streamNode=null;_vizMounted=false;
     createStreamingCard(); setPipelineStep('route','active'); updateUIState(true);
     var controller=new AbortController();currentController=controller;isStreaming=true;
+    // 90 秒看门狗: 服务不可达/流中断时终止转圈, 给出明确提示 (不再无限等待)
+    if(_watchdog)clearTimeout(_watchdog);
+    _watchdog=setTimeout(function(){
+      if(!isStreaming)return;
+      try{controller.abort();}catch(e){}
+      clearThinking();isStreaming=false;currentController=null;updateUIState(false);
+      RAG.toast('响应超时: 服务可能正在重启或不可达, 请稍后重试','err',5000);
+    },90000);
     fetch(API+'/qa/ask/stream',{
       method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),signal:controller.signal,
       body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:chatHistory.slice(-20),force_agent:_currentAgent||null})
@@ -715,6 +723,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   }
 
   var _pipelineEl=null;        // 检索过程渐进可视化的步骤容器引用
+  var _watchdog=null;          // 流式请求 90s 看门狗 (超时/异常时解除转圈)
   var _vizMounted=false;       // 检索可视化面板是否已在当前流挂载(每轮仅挂一次), 防止 sources 重复到达重复渲染
   function showThinking(){
     var div=document.createElement('div');div.className='msg msg-assistant';div.id='thinkingMsg';
@@ -824,6 +833,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   }
 
   function finalizeAnswer(fullAnswer,metaInfo,sourcesList,retrievalMeta){
+    if(_watchdog){clearTimeout(_watchdog);_watchdog=null;}
     setPipelineStep('generate','done');
     var reranked=(retrievalMeta&&retrievalMeta.final)||(metaInfo&&metaInfo.rerank_ms>0);
     setPipelineStep('rerank', reranked?'done':'skip');
@@ -955,6 +965,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   }
 
   function handleError(msg){
+    if(_watchdog){clearTimeout(_watchdog);_watchdog=null;}
     clearThinking();isStreaming=false;currentController=null;updateUIState(false);
     RAG.handleApiError?RAG.handleApiError('/qa/ask/stream',new Error(msg),true):RAG.toast('请求失败: '+msg,'err');
   }
