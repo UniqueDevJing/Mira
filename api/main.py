@@ -128,6 +128,16 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web-static")
 
 
+@app.middleware("http")
+async def html_no_cache_middleware(request, call_next):
+    """HTML 页面禁缓存: 保证前端更新即刷即见 (静态资源仍走 ETag 协商缓存)。"""
+    response = await call_next(request)
+    ct = response.headers.get("content-type", "")
+    if ct.startswith("text/html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "1.0.0"}
