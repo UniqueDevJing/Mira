@@ -132,6 +132,17 @@ async def ask_question(req: QARequest, request: Request):
     message_type, sentiment = classify_message(question)
     agent_result: dict | None = None
 
+    # 前端切换条: force_agent 优先于自动分类 (consult=强制 RAG, 其余=指定 Agent)
+    if req.force_agent == TYPE_CHAT:
+        message_type = TYPE_CHAT
+    elif req.force_agent == TYPE_COMPLAINT:
+        message_type = TYPE_COMPLAINT
+        sentiment = "upset"
+    elif req.force_agent == TYPE_OPERATION:
+        message_type = TYPE_OPERATION
+    elif req.force_agent == "consult":
+        message_type = "consult"
+
     if req.confirm_operation or req.pending_operation_id:
         # 二次确认流: 无论分类结果直接进操作 Agent 确认分支
         message_type = TYPE_OPERATION
@@ -288,6 +299,16 @@ async def ask_question_stream(req: QARequest, request: Request):
 
     _mt, _sentiment = classify_message(req.question)
     _agent_result: dict | None = None
+    # 前端切换条: force_agent 优先于自动分类
+    if req.force_agent == TYPE_CHAT:
+        _mt = TYPE_CHAT
+    elif req.force_agent == TYPE_COMPLAINT:
+        _mt = TYPE_COMPLAINT
+        _sentiment = "upset"
+    elif req.force_agent == TYPE_OPERATION:
+        _mt = TYPE_OPERATION
+    elif req.force_agent == "consult":
+        _mt = "consult"
     if req.confirm_operation or req.pending_operation_id:
         _agent_result = handle_operation(req.question, confirm=req.confirm_operation,
                                          pending_id=req.pending_operation_id)

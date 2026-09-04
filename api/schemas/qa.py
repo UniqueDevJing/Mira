@@ -57,6 +57,11 @@ class QARequest(BaseModel):
     pending_operation_id: str | None = Field(
         default=None, max_length=32, description="操作 Agent 待确认操作 ID (来自上一轮响应 pending_operation.pending_id)"
     )
+    force_agent: str | None = Field(
+        default=None,
+        pattern=r"^(consult|chat|complaint|operation)$",
+        description="指定执行 Agent (前端切换条): consult=强制走 RAG 检索, 其余直接分发到对应 Agent; 不传=自动意图分流",
+    )
 
     model_config = {
         "json_schema_extra": {

@@ -27,10 +27,14 @@
 
 /* ── 空状态（居中） ── */
 .empty-state {
-  display: none; flex-direction: column; align-items: center; justify-content: center;
-  flex: 1; padding: 40px 24px; gap: 28px; min-height: 200px;
+  display: none; flex-direction: column; align-items: center; justify-content: flex-start;
+  flex: 1; padding: 24px 24px 16px; gap: 16px; min-height: 200px;
+  overflow-y: auto; min-height: 0;
 }
 .empty-state.show { display: flex; }
+/* 内容不足一屏时保持视觉居中, 超高时可滚动不被裁切 */
+.empty-state .brand-center { margin-top: auto; }
+.empty-state .upload-hint { margin-bottom: auto; }
 .brand-center { text-align: center; }
 .welcome-title {
   font-size: 26px; font-weight: 700; color: var(--text); margin: 12px 0 6px; letter-spacing: -.02em;
@@ -74,22 +78,33 @@
 .kb-empty-msg { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
 /* ── 多 Agent 框架首屏面板 ── */
-.agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:520px;margin:18px auto 0;}
+.agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:520px;margin:14px auto 0;width:100%;}
 .agent-card{padding:12px 14px;border-radius:12px;background:var(--bg-2,rgba(127,127,127,.06));
-  border:1px solid rgba(127,127,127,.18);text-align:left;transition:transform .2s ease,border-color .2s ease;}
+  border:1px solid rgba(127,127,127,.18);text-align:left;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;cursor:pointer;position:relative;}
 .agent-card:hover{transform:translateY(-2px);border-color:var(--primary);}
+.agent-card.selected{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary),0 4px 14px rgba(99,102,241,.18);}
+.agent-card.selected::after{content:'✓ 已选';position:absolute;top:8px;right:10px;font-size:11px;color:var(--primary);}
 .agent-icon{font-size:20px;}
 .agent-name{font-weight:600;font-size:14px;margin:6px 0 2px;}
 .agent-desc{font-size:12px;color:var(--text-3);line-height:1.4;}
-.flow-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:560px;margin:16px auto 0;}
+.agent-hint{font-size:12px;color:var(--primary);text-align:center;margin-top:10px;min-height:16px;}
+.flow-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:560px;margin:12px auto 0;}
 .flow-node{font-size:11.5px;padding:3px 9px;border-radius:99px;background:rgba(99,102,241,.1);color:var(--primary);white-space:nowrap;}
 .flow-arrow{color:var(--text-3);font-size:12px;}
-.try-prompts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;align-items:center;}
+.try-prompts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px;align-items:center;}
 .try-label{font-size:12px;color:var(--text-3);}
 .try-btn{font-size:12.5px;padding:6px 12px;border-radius:99px;border:1px solid rgba(127,127,127,.25);
   background:transparent;color:var(--text-1);cursor:pointer;transition:all .2s ease;}
 .try-btn:hover{border-color:var(--primary);color:var(--primary);}
 .brand-center .welcome-subtitle{color:var(--primary);font-weight:500;}
+
+/* ── Agent 切换条 (常驻输入区上方, 随时可切) ── */
+.agent-bar{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;align-items:center;}
+.agent-chip{font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid rgba(127,127,127,.25);
+  background:transparent;color:var(--text-2);cursor:pointer;transition:all .18s ease;white-space:nowrap;}
+.agent-chip:hover{border-color:var(--primary);color:var(--primary);}
+.agent-chip.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600;}
+.agent-chip .chip-ico{margin-right:3px;}
 
 /* ── 多 Agent 框架卡片: 投诉工单 / 待确认操作 ── */
 .ticket-card{margin:10px 0 4px;padding:10px 12px;border-radius:10px;font-size:13px;
@@ -165,28 +180,29 @@
         <h1 class="welcome-title">RAG Agent</h1>
         <p class="welcome-subtitle">多 Agent 智能分流 · 检索增强问答</p>
       </div>
-      <div class="agent-grid">
-        <div class="agent-card" data-agent="consult">
+      <div class="agent-grid" id="agentGrid">
+        <div class="agent-card" data-agent="consult" title="点击锁定咨询模式">
           <div class="agent-icon">🔍</div>
           <div class="agent-name">咨询 Agent</div>
           <div class="agent-desc">RAG 检索 + 融合重排 + 来源引用</div>
         </div>
-        <div class="agent-card" data-agent="operation">
+        <div class="agent-card" data-agent="operation" title="点击锁定操作模式">
           <div class="agent-icon">🛠️</div>
           <div class="agent-name">操作 Agent</div>
           <div class="agent-desc">文档查询 / 高危操作二次确认</div>
         </div>
-        <div class="agent-card" data-agent="complaint">
+        <div class="agent-card" data-agent="complaint" title="点击锁定投诉模式">
           <div class="agent-icon">🎫</div>
           <div class="agent-name">投诉 Agent</div>
           <div class="agent-desc">情绪识别 + 自动建单 + 升级人工</div>
         </div>
-        <div class="agent-card" data-agent="chat">
+        <div class="agent-card" data-agent="chat" title="点击锁定闲聊模式">
           <div class="agent-icon">💬</div>
           <div class="agent-name">闲聊 Agent</div>
           <div class="agent-desc">跳过检索, 秒级轻量回复</div>
         </div>
       </div>
+      <div class="agent-hint" id="agentHint">点击卡片锁定 Agent, 或直接提问自动分流</div>
       <div class="flow-strip">
         <span class="flow-node">输入 (文本/图片)</span><span class="flow-arrow">→</span>
         <span class="flow-node">意图分类</span><span class="flow-arrow">→</span>
@@ -209,6 +225,13 @@
 
   <!-- 输入框：固定底部 -->
   <footer id="inputAreaWrap" class="input-area">
+    <div class="agent-bar" id="agentBar" title="选择本轮由哪个 Agent 处理 (自动分流=按意图自动判断)">
+      <button class="agent-chip active" data-agent="">⚡ 自动分流</button>
+      <button class="agent-chip" data-agent="consult"><span class="chip-ico">🔍</span>咨询</button>
+      <button class="agent-chip" data-agent="operation"><span class="chip-ico">🛠️</span>操作</button>
+      <button class="agent-chip" data-agent="complaint"><span class="chip-ico">🎫</span>投诉</button>
+      <button class="agent-chip" data-agent="chat"><span class="chip-ico">💬</span>闲聊</button>
+    </div>
     <div class="input-container" id="inputWrapper">
       <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx,image/png,image/jpeg,image/webp" multiple>
       <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库 / 选择图片提问"></button>
@@ -463,7 +486,33 @@
     questionInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!isStreaming){e.preventDefault();askQuestion();}});
     sendBtn.addEventListener('click',function(){if(!sendBtn.disabled)askQuestion();});
     stopBtn.addEventListener('click',function(){if(currentController)stopGeneration();});
-    // 多 Agent 首屏: 示例问题一键发送
+    // ── 多 Agent: 切换条 (常驻, 随时可切) ──
+    var _currentAgent='';
+    var agentBar=$('agentBar');
+    if(agentBar)agentBar.addEventListener('click',function(e){
+      var chip=e.target.closest('.agent-chip');
+      if(!chip)return;
+      agentBar.querySelectorAll('.agent-chip').forEach(function(c){c.classList.remove('active');});
+      chip.classList.add('active');
+      _currentAgent=chip.getAttribute('data-agent')||'';
+      // 空状态卡片选中态同步
+      var grid=$('agentGrid'),hint=$('agentHint');
+      if(grid){
+        grid.querySelectorAll('.agent-card').forEach(function(c){c.classList.toggle('selected',c.getAttribute('data-agent')===_currentAgent);});
+      }
+      if(hint)hint.textContent=_currentAgent?('已锁定 '+( {consult:'咨询',operation:'操作',complaint:'投诉',chat:'闲聊'}[_currentAgent]||_currentAgent)+' Agent, 输入框提问即由该 Agent 处理'):'点击卡片锁定 Agent, 或直接提问自动分流';
+    });
+    // ── 多 Agent: 首屏卡片点击 = 锁定对应 Agent ──
+    var agentGrid=$('agentGrid');
+    if(agentGrid)agentGrid.addEventListener('click',function(e){
+      var card=e.target.closest('.agent-card');
+      if(!card)return;
+      var agent=card.getAttribute('data-agent')||'';
+      var chip=agentBar?agentBar.querySelector('.agent-chip[data-agent="'+agent+'"]'):null;
+      if(chip)chip.click();else{_currentAgent=agent;}
+      questionInput.focus();
+    });
+    // ── 多 Agent: 首屏示例问题一键发送 ──
     emptyState.addEventListener('click',function(e){
       var btn=e.target.closest('.try-btn');
       if(!btn)return;
@@ -538,7 +587,7 @@
         createStreamingCard();setPipelineStep('route','active');updateUIState(true);
         fetch(API+'/qa/ask',{
           method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),
-          body:JSON.stringify({question:question,image_base64:base64,top_k:5,session_id:RAG.getSessionId()})
+          body:JSON.stringify({question:question,image_base64:base64,top_k:5,session_id:RAG.getSessionId(),force_agent:_currentAgent||null})
         }).then(function(r){return r.json();}).then(function(d){
           finalizeAnswer(d.answer||'(无内容)',{message_type:d.message_type||'consult',agent:d.agent||'rag',kb_id:d.kb_id,routing_source:d.routing_source,done:d},(d.sources||[]).map(function(s){return{title:s.id,score:s.score};}),d.retrieval_meta);
         }).catch(function(err){handleError((err&&err.message)||'图片提问失败');});
@@ -585,7 +634,7 @@
     var controller=new AbortController();currentController=controller;isStreaming=true;
     fetch(API+'/qa/ask/stream',{
       method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),signal:controller.signal,
-      body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:chatHistory.slice(-20)})
+      body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:chatHistory.slice(-20),force_agent:_currentAgent||null})
     })
     .then(function(r){
       if(!r.ok)throw new Error('HTTP '+r.status);

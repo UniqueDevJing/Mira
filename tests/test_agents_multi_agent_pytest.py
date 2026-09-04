@@ -176,3 +176,32 @@ def test_ask_route_importable():
 
     assert hasattr(qa_route, "_merge_image_text")
     assert hasattr(qa_route, "_remember_async")
+
+
+# ───────────────────────── force_agent (前端切换条) ─────────────────────────
+@pytest.fixture(scope="module")
+def api_client():
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+def test_force_agent_chat_overrides_content(api_client):
+    """内容是咨询问题, 但 force_agent=chat → 强制走闲聊 Agent (mock LLM)。"""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    fake_resp = MagicMock(); fake_resp.content = "嗨~"
+    with patch("api.core.llm_client.get_llm_client") as mock_get:
+        mock_client = MagicMock(); mock_client.chat = AsyncMock(return_value=fake_resp)
+        mock_get.return_value = mock_client
+        d = api_client.post("/api/v1/qa/ask", json={"question": "七天内可以无理由退款吗", "force_agent": "chat"}).json()
+    assert d["message_type"] == "chat" and d["agent"] == "chitchat"
+
+
+def test_force_agent_consult_overrides_chitchat(api_client):
+    """内容是闲聊, 但 force_agent=consult → 强制走 RAG (skill 路由正常)。"""
+    d = api_client.post("/api/v1/qa/ask", json={"question": "你好", "force_agent": "consult", "skill": "direct"}).json()
+    assert d["message_type"] == "consult"
+    assert d["skill"] == "direct"
