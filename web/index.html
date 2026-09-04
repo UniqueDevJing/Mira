@@ -77,6 +77,16 @@
 .status-upload { background: rgba(99,102,241,.12); color: var(--primary); }
 .kb-empty-msg { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
+/* ── 科技感背景: 粒子网格 canvas ── */
+.tech-bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+.app-layout{position:relative;z-index:1;}
+/* 发光卡片质感 */
+.agent-card,.ticket-card,.input-container{backdrop-filter:blur(8px);}
+.agent-card.selected{box-shadow:0 0 0 1px var(--primary),0 0 18px var(--primary-glow);}
+.input-container:focus-within{box-shadow:0 0 0 1px var(--primary),0 0 22px var(--primary-glow);}
+.image-ask-btn{font-size:16px;line-height:1;}
+.image-ask-btn:hover{filter:brightness(1.25);}
+
 /* ── 多 Agent 框架首屏面板 ── */
 .agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:520px;margin:14px auto 0;width:100%;}
 .agent-card{padding:12px 14px;border-radius:12px;background:var(--bg-2,rgba(127,127,127,.06));
@@ -133,6 +143,7 @@
 </style>
 </head>
 <body>
+<canvas id="techBg" class="tech-bg" aria-hidden="true"></canvas>
 <div class="app-layout">
 
 <!-- 侧栏：会话 + 文档管理 -->
@@ -233,8 +244,10 @@
       <button class="agent-chip" data-agent="chat"><span class="chip-ico">💬</span>闲聊</button>
     </div>
     <div class="input-container" id="inputWrapper">
+      <input type="file" id="imageInput" class="hidden" accept="image/png,image/jpeg,image/webp">
+      <button id="imageAskBtn" class="icon-btn image-ask-btn" title="图片提问: 选择图片, OCR 识别后由 AI 解答">📷</button>
       <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx,image/png,image/jpeg,image/webp" multiple>
-      <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库 / 选择图片提问"></button>
+      <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库"></button>
       <textarea id="questionInput" rows="1" placeholder="基于知识库提问..." autocomplete="off"></textarea>
       <button id="sendBtn" class="send-btn" title="发送" disabled></button>
       <button id="stopBtn" class="stop-btn" title="停止生成"></button>
@@ -480,6 +493,12 @@
       var img=files.find(function(f){return f.type&&f.type.indexOf('image/')===0;});
       if(img){askWithImage(img);}else{handleKBUpload(files);}
       fileInput.value='';
+    });
+    // 📷 专属图片提问入口
+    var imageInput=$('imageInput'),imageAskBtn=$('imageAskBtn');
+    if(imageAskBtn)imageAskBtn.addEventListener('click',function(){if(imageInput)imageInput.click();});
+    if(imageInput)imageInput.addEventListener('change',function(){
+      if(imageInput.files.length){askWithImage(imageInput.files[0]);imageInput.value='';}
     });
 
     questionInput.addEventListener('input',function(){autoResize(questionInput);toggleSendBtn();});
@@ -1193,6 +1212,68 @@
   }
 
   document.addEventListener('DOMContentLoaded',init);
+})();
+
+/* ── 科技感背景: 粒子网格 (主题自适应, 性能友好) ── */
+(function(){
+  'use strict';
+  var canvas=document.getElementById('techBg');
+  if(!canvas)return;
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var ctx=canvas.getContext('2d');
+  if(!ctx)return;
+  var nodes=[],W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  var N=54,LINK=140;
+
+  function resize(){
+    W=window.innerWidth;H=window.innerHeight;
+    canvas.width=W*DPR;canvas.height=H*DPR;
+    canvas.style.width=W+'px';canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  function spawn(){
+    nodes=[];
+    var n=Math.min(N,Math.max(24,Math.round(W*H/26000)));
+    for(var i=0;i<n;i++){
+      nodes.push({x:Math.random()*W,y:Math.random()*H,
+        vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,
+        r:1+Math.random()*1.6});
+    }
+  }
+  function theme(){
+    try{return RAG.effectiveTheme?RAG.effectiveTheme():'dark';}catch(e){return 'dark';}
+  }
+  function frame(){
+    if(document.hidden){requestAnimationFrame(frame);return;}
+    var dark=theme()==='dark';
+    var nodeFill=dark?'rgba(139,92,246,.55)':'rgba(99,102,241,.45)';
+    var linkBase=dark?'139,92,246':'99,102,241';
+    ctx.clearRect(0,0,W,H);
+    var i,j,a,b,dx,dy,d;
+    for(i=0;i<nodes.length;i++){
+      a=nodes[i];
+      a.x+=a.vx;a.y+=a.vy;
+      if(a.x<0||a.x>W)a.vx*=-1;
+      if(a.y<0||a.y>H)a.vy*=-1;
+    }
+    for(i=0;i<nodes.length;i++){
+      a=nodes[i];
+      for(j=i+1;j<nodes.length;j++){
+        b=nodes[j];
+        dx=a.x-b.x;dy=a.y-b.y;d=Math.sqrt(dx*dx+dy*dy);
+        if(d<LINK){
+          ctx.strokeStyle='rgba('+linkBase+','+(0.14*(1-d/LINK)).toFixed(3)+')';
+          ctx.lineWidth=1;
+          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+        }
+      }
+      ctx.fillStyle=nodeFill;
+      ctx.beginPath();ctx.arc(a.x,a.y,a.r,0,6.2832);ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener('resize',function(){resize();spawn();});
+  resize();spawn();requestAnimationFrame(frame);
 })();
 </script>
 </body>

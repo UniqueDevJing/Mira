@@ -1,6 +1,6 @@
 """知识问答相关模型"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.config import settings
 from engines.router.routing_rules import SKILLS
@@ -21,7 +21,14 @@ class ChatTurn(BaseModel):
 
 
 class QARequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=2000, description="自然语言问题")
+    question: str = Field(default="", max_length=2000, description="自然语言问题 (纯图片提问时可为空, 由 OCR 提取文字)")
+
+    @model_validator(mode="after")
+    def _question_or_image(self):
+        """空问题仅在有图片输入时合法 (纯图片提问)。"""
+        if not self.question.strip() and not self.image_base64:
+            raise ValueError("question 不能为空 (除非携带 image_base64 纯图片提问)")
+        return self
     mode: str = Field(
         default="hybrid",
         pattern=r"^(hybrid|vector|graph)$",

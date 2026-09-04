@@ -70,7 +70,25 @@ def _merge_image_text(image_base64: str, question: str) -> str:
         raise HTTPException(status_code=400, detail="图片格式无法解析, 请提供 PNG/JPG。")
 
     result, _ = ocr(img)
-    texts = [t for _, t, c in (result or []) if t and c >= 0.3]
+    # RapidOCR 各版本返回结构不一: [(box, text, conf)...] (conf 可能为 str) / [text...] / str / dict。
+    # 统一防御性解析, 只取文字。
+    texts: list[str] = []
+    for item in (result or []):
+        if isinstance(item, str):
+            texts.append(item)
+        elif isinstance(item, dict):
+            t = item.get("text") or ""
+            if t:
+                texts.append(t)
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            t = item[1]
+            c = item[2] if len(item) > 2 else 1.0
+            try:
+                ok = float(c) >= 0.3
+            except (TypeError, ValueError):
+                ok = True  # 无置信度信息时保留
+            if t and ok:
+                texts.append(str(t))
     ocr_text = " ".join(texts).strip()
     if not ocr_text:
         return question  # 图里没字, 退化为纯文本问题
