@@ -667,14 +667,20 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
     _streamFull='';_streamDirty=false;_firstDeltaSeen=false;_streamNode=null;_vizMounted=false;
     createStreamingCard(); setPipelineStep('route','active'); updateUIState(true);
     var controller=new AbortController();currentController=controller;isStreaming=true;
-    // 90 秒看门狗: 服务不可达/流中断时终止转圈, 给出明确提示 (不再无限等待)
+    // 看门狗: 首个响应 12 秒内不到 / 流中断 15 秒无数据 → 立即报错, 不让用户干等
+    // (正常回答 3-6s 出首字; 超时阈值按"异常立刻可见"设定)
     if(_watchdog)clearTimeout(_watchdog);
-    _watchdog=setTimeout(function(){
+    function _failFast(){
       if(!isStreaming)return;
       try{controller.abort();}catch(e){}
       clearThinking();isStreaming=false;currentController=null;updateUIState(false);
-      RAG.toast('响应超时: 服务可能正在重启或不可达, 请稍后重试','err',5000);
-    },90000);
+      RAG.toast('服务无响应, 请稍后重试','err',5000);
+    }
+    _watchdog=setTimeout(_failFast,12000);
+    function _kick(){ // 每收到一批数据重置看门狗
+      if(_watchdog)clearTimeout(_watchdog);
+      _watchdog=setTimeout(_failFast,15000);
+    }
     fetch(API+'/qa/ask/stream',{
       method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),signal:controller.signal,
       body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:chatHistory.slice(-20),force_agent:_currentAgent||null})
@@ -685,6 +691,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       function pump(){
         return reader.read().then(function(result){
           if(result.done){finalizeAnswer(_streamFull,metaInfo,sourcesList,retrievalMeta);return;}
+          _kick();
           buf+=decoder.decode(result.value,{stream:true});
           var events=RAG.parseSSEStream(buf);buf='';
           events.forEach(function(ev){
