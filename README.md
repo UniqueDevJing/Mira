@@ -44,6 +44,8 @@
 
 四层可复跑门禁：`make test-ci`（覆盖率 ≥80%）· `make eval-routing`（黄金路由题）· `make eval-gate`（390 问召回基线比对）· `make eval-kb`（KB 级生产对齐评测）。
 
+📊 **完整评测报告**（检索召回 / 路由准确率 / 幻觉率 / 误拒率 / 复现命令）见 [docs/EVALUATION.md](docs/EVALUATION.md)。
+
 ## 🏗️ 架构
 
 ```mermaid
