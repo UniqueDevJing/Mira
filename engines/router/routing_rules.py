@@ -86,7 +86,8 @@ def load_rules_from_file(path: str | os.PathLike) -> dict:
 
 # 标量阈值: 部署期可经环境变量覆盖, 默认内置值
 ROUTE_THRESHOLD = _env_float("RAG_ROUTE_THRESHOLD", 0.85)
-LLM_TIMEOUT_S = _env_float("RAG_LLM_TIMEOUT_S", 1.5)
+# 2026-09-06 实测: 兜底调用 p95 = 1.39s, 1.5s 阈值在高峰期造成约 30% 误降级 (llm→rule) → 放宽至 3.0s
+LLM_TIMEOUT_S = _env_float("RAG_LLM_TIMEOUT_S", 3.0)
 FALLBACK_SKILL = _env_str("RAG_FALLBACK_SKILL", "tech")
 # 扇出余量: 规则层 top-1 已达 ROUTE_THRESHOLD 时, 若次选与 top-1 的置信度差 <= 该值,
 # 仍保留 top-2 供选择性扇出 (而非死板单路)。
