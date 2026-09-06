@@ -1,0 +1,4 @@
+$cc541644-8c88-45c3-8974-3a2a75638158²Öid ÿÿÿÿÿÿÿÿÿ*string08!doc_id ÿÿÿÿÿÿÿÿÿ*string08"content ÿÿÿÿÿÿÿÿÿ*string087	embedding ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:51208$
+created_at ÿÿÿÿÿÿÿÿÿ*int6408$title_chain ÿÿÿÿÿÿÿÿÿ*list08item *string08$	doc_title ÿÿÿÿÿÿÿÿÿ*string08#
+page_range ÿÿÿÿÿÿÿÿÿ*list08item	 *int3208$	file_name
+ ÿÿÿÿÿÿÿÿÿ*string08%update_time ÿÿÿÿÿÿÿÿÿ*int6408$	parent_id ÿÿÿÿÿÿÿÿÿ*string08

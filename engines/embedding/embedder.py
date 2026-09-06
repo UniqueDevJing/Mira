@@ -60,7 +60,7 @@ def _get_model(model_name: str = "BAAI/bge-small-zh-v1.5", device: str = "cpu"):
 class EmbeddingService(EmbedderInterface):
     def __init__(
         self,
-        model_name: str = "BAAI/bge-small-zh-v1.5",
+        model_name: str | None = None,
         device: str = "cpu",
         backend: str = "local",
         api_base: str = "",
@@ -69,6 +69,11 @@ class EmbeddingService(EmbedderInterface):
         api_dims: int = 0,
         api_timeout_s: float = 10.0,
     ):
+        # model_name 缺省时从全局配置读取 (2026-09-06: 支持选型切换, 默认指向 models/bge-base-zh-v1.5)
+        if not model_name:
+            from api.config import settings
+
+            model_name = settings.embedding_model
         self.backend = (backend or "local").lower()
         self.device = device
         self.batch_size = 32

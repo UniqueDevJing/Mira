@@ -1,0 +1,3 @@
+$c3602033-34d2-4c7c-bbc2-036561b71865²ãid ÿÿÿÿÿÿÿÿÿ*string08!doc_id ÿÿÿÿÿÿÿÿÿ*string08"content ÿÿÿÿÿÿÿÿÿ*string087	embedding ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:51208$
+created_at ÿÿÿÿÿÿÿÿÿ*int6408$title_chain ÿÿÿÿÿÿÿÿÿ*list08item *string08$	doc_title ÿÿÿÿÿÿÿÿÿ*string08#
+page_range ÿÿÿÿÿÿÿÿÿ*list08item	 *int3208
