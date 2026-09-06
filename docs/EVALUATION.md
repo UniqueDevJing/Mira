@@ -103,8 +103,22 @@
 
 结论（负结果也是结论）：
 - **alpha=0.9 已是 R@3 最优**——降低 alpha（加重 RRF 托底）反而降 R@3；alpha 维度无免费提升；
-- alpha=1.0（纯 CE 分）R@1/MRR 更高但 R@3 略降，不构成切换理由；
-- R@3 的进一步突破不在融合权重维度，候选深度（10→20）与 CE 输入长度（256→384）是下一批待 sweep 杠杆（单次 sweep ~15 分钟，见 `scripts/tune_rerank_alpha.py`）。
+- alpha=1.0（纯 CE 分）R@1/MRR 更高但 R@3 略降，不构成切换理由。
+
+### 6.1 候选深度 sweep（负结果）
+
+candidate_k ∈ {5,10,15,20,25}（alpha=0.9 固定，`scripts/tune_rerank_depth.py`）：**R@1/R@3/MRR 随深度单调下降**（R@3: 0.715→0.689），仅 R@10 随深度上升（0.889→0.961）。当前生产 candidate_k=10 是 precision-recall 的合理平衡点，候选深度维度无优化空间。
+
+### 6.2 CE 输入长度 sweep（正收益，已应用）
+
+max_length 256 vs 384（candidate_k=10，alpha=0.9，`scripts/tune_rerank_maxlen.py`）：
+
+| max_length | R@1 | R@3 | R@5 | R@10 | MRR |
+|---|---|---|---|---|---|
+| 256（旧默认） | 0.330 | 0.700 | 0.866 | 0.978 | 0.713 |
+| **384（已应用）** | 0.330 | **0.715** | **0.871** | 0.978 | **0.722** |
+
+**R@3 +1.45pp、MRR +0.86pp，纯排序精度提升**（R@1/R@10 不变）。代价 CE 推理延迟 +62%（595→964ms），但 rerank 走后台异步（stream_sources_before_rerank），首字可见不受影响。`reranker_max_length` 默认值已更新为 384。
 
 ## 7. RAGAS 评测（389 样本，2026-09-06）
 

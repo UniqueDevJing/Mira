@@ -71,10 +71,10 @@ class Settings(BaseSettings):
     #     python scripts/bench_rerank_backends.py --limit 50      # 排序一致性
     #     python scripts/eval_retrieval.py --fusion --adaptive    # 端到端 Recall/MRR
     # 本机 hard 集实测 (150 问, 融合模式), 找甜点:
-    #     512 -> R@1 58.7%  MRR 0.794  1107ms
-    #     256 -> R@1 59.3%  MRR 0.798   717ms   <- 甜点: 快 35% 且质量更好(长文档尾部多为噪声)
-    #     192 -> R@1 56.7%  MRR 0.782   500ms   (更快但开始掉质量, 不采用)
-    reranker_max_length: int = 256
+    # 2026-09-06 390 问全量 sweep: 384 优于 256 (R@3 0.715 vs 0.700, MRR 0.722 vs 0.713,
+    # R@1/R@10 持平)。代价 CE 延迟 +62% (256→595ms, 384→964ms), 但 rerank 走后台异步
+    # (见 stream_sources_before_rerank), 首字可见不受影响 → 采用 384。
+    reranker_max_length: int = 384
     # P0-2: 流式链路先把"重排前"的来源发给前端 (~50ms 可见), 再在后台做 rerank (~700ms)。
     # 只提前**来源面板**, 答案生成仍等 rerank 完成, 因此上下文/引用完全不受影响 (零错引风险)。
     # 前端收到第二个 sources 事件时整体替换渲染, 无副作用。
