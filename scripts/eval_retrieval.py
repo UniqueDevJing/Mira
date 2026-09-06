@@ -136,6 +136,8 @@ def main():
     ap.add_argument("--eval-dir", default="data/eval")
     ap.add_argument("--chunks", default="corpus_chunks.json",
                     help="语料块嵌入文件(默认 corpus_chunks.json; 重嵌入对比可用独立文件如 corpus_chunks_bgem3.json)")
+    ap.add_argument("--query-prefix", default="",
+                    help="查询前缀 (对齐生产协议: 生产 embed_query 会加 'query: ' 前缀, 对比实验必须同步)")
     ap.add_argument("--embedding-model", default="",
                     help="覆盖 config 的 embedding 模型(仅本次评测, 不改生产配置)。如 BAAI/bge-m3")
     ap.add_argument("--embedding-backend", default="",
@@ -222,7 +224,7 @@ def main():
     for it in dataset:
         q = it["question"]
         expected = set(it["expected_chunk_ids"])
-        q_emb = np.array(emb.embed_query(q), dtype=np.float32)
+        q_emb = np.array(emb.embed_query(args.query_prefix + q if args.query_prefix else q), dtype=np.float32)
         # 查询嵌入增广: 在向量腿对 q_emb 做 PRF/HyDE, BM25 腿仍用原查询。
         if args.augment == "prf":
             # 首轮 top-k 反馈向量取自已归一化的全量语料矩阵 embs_n
