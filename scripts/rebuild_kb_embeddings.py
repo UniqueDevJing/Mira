@@ -44,7 +44,7 @@ def main():
             continue
         t0 = time.time()
         texts = [r.get("content") or "" for r in rows]
-        embs = emb.encode(texts, batch_size=32, show_progress_bar=False)
+        embs = emb.encode(texts, batch_size=32, show_progress_bar=False, normalize_embeddings=True)  # 对齐生产: bge 必须归一化
         for r, e in zip(rows, embs):
             r["embedding"] = list(map(float, e))
         db.drop_table(name)

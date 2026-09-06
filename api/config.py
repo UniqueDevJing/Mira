@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     api_key_whitelist: str = ""
 
     # Embedding
-    embedding_model: str = "models/bge-base-zh-v1.5"  # 2026-09-06 选型审计: bge-base 768 维全指标优于 small (R@1 +1.5pp, MRR +1.7pp), 本地路径自包含, 见 docs/TECH-STACK-AUDIT.md
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"  # 2026-09-06 实测回滚: bge-base 在生产协议(query前缀+chunk无前缀)下 KB MRR 0.815→0.62 大幅变差; 390问离线对比的无前缀协议结论不适用于生产
     embedding_device: str = "cpu"
     # Embedding 后端: local=本地 SentenceTransformer; api=商用兼容 OpenAI 的 Embedding API(DashScope/OpenAI 等)
     embedding_backend: str = "local"
