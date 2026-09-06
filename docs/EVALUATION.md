@@ -106,11 +106,24 @@
 - alpha=1.0（纯 CE 分）R@1/MRR 更高但 R@3 略降，不构成切换理由；
 - R@3 的进一步突破不在融合权重维度，候选深度（10→20）与 CE 输入长度（256→384）是下一批待 sweep 杠杆（单次 sweep ~15 分钟，见 `scripts/tune_rerank_alpha.py`）。
 
-## 7. 运行时近似指标（每次问答实时产出）
+## 7. RAGAS 评测（389 样本，2026-09-06）
+
+按 RAGAS 论文 (Es et al. 2023) 定义自实现四指标（`scripts/eval_ragas_metrics.py`；判定模型 qwen-plus，相似度 bge-small-zh；ragas 官方包因依赖链与 Python 3.14 不兼容未采用）：
+
+| 指标 | 数值 | 含义 |
+|---|---|---|
+| **faithfulness** | **0.914** | 答案断言被检索上下文支持的比例（反幻觉） |
+| answer_relevancy | 0.749 | 答案与问题的相关程度 |
+| context_recall | 0.868 | 标准答案被检索上下文覆盖的比例 |
+| context_precision | 0.571 | 检索上下文对答案的有用度（rank 加权） |
+
+交叉印证：faithfulness 91.4% 与数字型幻觉检出 100% + 端到端可用率 88.8% 一致；context_precision 57% 与 R@1 0.39、路由 top1 58.8% 同源——**检索排序精度是当前系统性短板**，recall 已触顶而 precision 未跟上，指向 rerank 排序质量的下一轮优化。
+
+## 8. 运行时近似指标（每次问答实时产出）
 
 `QAResponse.qa_metrics` 提供近似 faithfulness / retrieval_relevance / confidence（词重合 + 语义相似度近似，非 LLM 评审），用于在线监控与告警，不作为离线结论。
 
-## 8. 局限与后续
+## 9. 局限与后续
 
 - ~~端到端答案准确率~~ ✅ 已纳入（见 3.5 节，LLM-as-judge 390 题全量）；
 - 幻觉量化目前覆盖数字型幻觉；陈述型幻觉依赖 faithfulness 近似指标 + 词重合护栏，覆盖不完全；
