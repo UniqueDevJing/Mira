@@ -1,4 +1,4 @@
-# Mira 智答 · 基于 RAG 的多模态智能客服系统
+# Mira · 基于 RAG 的可信问答系统
 
 ![Tests](https://img.shields.io/badge/tests-534%20passed-10b981)
 ![Python](https://img.shields.io/badge/python-3.12%2B-4f6ef7)
