@@ -64,6 +64,3 @@ htmlcov/
 # 运行时持久化产物（BM25/图谱 pkl、SQLite 已由 *.db 覆盖）
 data/*.pkl
 
-# 本地工具目录（不入库）
-.claude/
-docs/superpowers/

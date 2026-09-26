@@ -29,7 +29,7 @@ del "%TMPXML%" 2>nul
 echo.
 echo [OK] Created scheduled task "%TASK%" (logon autostart, no window, auto-retry on crash)
 echo   It will start automatically on next logon. No manual start needed.
-echo   URL: https://rag.uniquejingclaudecoding.top/  (enter RAG_API_KEY)
+echo   URL: set env RAG_PUBLIC_URL (default http://127.0.0.1:8000/)
 echo.
 echo   Manage:
 echo     status   : schtasks /query /tn %TASK%

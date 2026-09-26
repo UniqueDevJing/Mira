@@ -1,7 +1,7 @@
 """RAG 2.0 生产守护启动器(单实例 / 崩溃自愈 / 端口自愈 / 全链路可观测)。
 
 - 登录后由计划任务(或手动双击)拉起, 全程无控制台窗口(pythonw)。
-- 同时拉起 rag_api(:8000) 与命名隧道(rag.uniquejingclaudecoding.top)。
+- 同时拉起 rag_api(:8000) 与对外访问地址（隧道域名通过 RAG_PUBLIC_URL 环境变量指定）。
 - 隧道立即启动, 不阻塞等待模型加载; API 就绪后写 ready 标志。
 - 单实例锁: 已运行则直接退出, 避免重复拉起。
 - 端口自愈: 若 8000 被残留进程占用则自动释放。
@@ -30,7 +30,7 @@ LOCK_FILE = os.path.join(SCRIPTS, "start_prod.lock")
 READY_FILE = os.path.join(SCRIPTS, "start_prod.ready")
 
 HEALTH = "http://127.0.0.1:8000/health"
-PUBLIC_URL = "https://rag.uniquejingclaudecoding.top/"
+PUBLIC_URL = os.getenv("RAG_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/") + "/"
 PORT = 8000
 API_RESTART_DELAY = 3
 TUNNEL_RESTART_DELAY = 5
