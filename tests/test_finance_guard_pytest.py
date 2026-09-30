@@ -71,14 +71,51 @@ def test_fail_on_magnitude_tampering():
     assert "校验未通过" in refusal_text(out)
 
 
-def test_fail_on_cross_source_conflict():
-    """两个独立来源给出互斥数值 → fail（必有其一错误，拒答防错）。"""
+def test_cross_source_conflict_does_not_refuse():
+    """跨源矛盾在**护栏层**不再拒答（收窄理由见 finance_guard 模块 docstring）。
+
+    引擎原生仍判 fail —— 该行为由 engines/finance 的对抗门禁覆盖，不受本收窄影响。
+    但 RAG 出口的 sources 是多指标检索块，"同一指标不同值"的判定会大面积误报，
+    把正确答案拒掉的代价高于漏一次提示，故护栏只以 unsupported 作为拒答依据。
+    """
     docs = [
         _doc("2026年报", "公司 2026 年营业收入为 12000 万元。", ts=FRESH),
         _doc("券商研报", "公司 2026 年营业收入为 9800 万元。", ts=FRESH),
     ]
     out = run_finance_guard("公司营收多少", "公司 2026 年营业收入为 1.2 亿元。", docs)
+    assert out is not None
+    assert out.verdict != "fail", "跨源矛盾不应导致拒答（会误拒正常回答）"
+
+
+# ── 多指标段落回归（线上实测出来的误报，务必保持通过）─────────
+# 财务年报段落在同一段里同时包含总营收、分部营收、同比百分比与章节序号「一、」，
+# 引擎的 conflict / intra_conflict 会把这些**不同口径**的数字互相比较
+# （实测：22.75% vs 23.42% 被当成同一指标矛盾；"一、" 与日期「12 月 31 日」被抽成数值），
+# 进而在 RAG 出口把正确答案判成"来源矛盾"而拒答。
+_MULTI_METRIC_PARA = (
+    "一、主要会计数据\n"
+    "2025 年度营业总收入为 128400 万元，2024 年度营业总收入为 104600 万元，同比增长 22.75%。\n"
+    "2025 年度营业成本为 103300 万元，2024 年度营业成本为 83700 万元，同比增长 23.42%。\n"
+    "2025 年度毛利为 25100 万元。\n"
+    "二、分部情况\n"
+    "2025 年度智能硬件业务营业收入为 62400 万元，云服务订阅业务营业收入为 38700 万元。\n"
+    "三、截至 2025 年 12 月 31 日，资产负债率为 38.60%。"
+)
+
+
+def test_multi_metric_paragraph_does_not_refuse():
+    """整段多指标报表文本不得触发拒答（正常回答要放行）。"""
+    docs = [_doc("2025年报", _MULTI_METRIC_PARA, ts=FRESH)]
+    out = run_finance_guard("公司营收多少", "2025 年度营业总收入为 128400 万元。", docs)
+    assert out is not None and out.verdict == "pass", "多指标段落不应误拒正常回答"
+
+
+def test_multi_metric_paragraph_still_catches_tampering():
+    """反向断言：同一个多指标段落里，数量级被篡改仍必须拒答（别把误报修成漏报）。"""
+    docs = [_doc("2025年报", _MULTI_METRIC_PARA, ts=FRESH)]
+    out = run_finance_guard("公司营收多少", "2025 年度营业总收入为 128400 元。", docs)
     assert out is not None and out.verdict == "fail"
+    assert "无来源支撑" in out.summary
 
 
 def test_warn_on_stale_source():

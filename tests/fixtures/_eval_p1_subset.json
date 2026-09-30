@@ -1,0 +1,98 @@
+[
+  {
+    "kb": "policy",
+    "question": "我在手机上怎么申请退货啊？",
+    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
+    "expected_chunk_ids": [
+      "1e379a96-1e2_chunk_0004"
+    ]
+  },
+  {
+    "kb": "policy",
+    "question": "我在手机上怎么申请退款啊？",
+    "reference_answer": "在订单详情页点击申请退款，选择退款原因并填写说明。",
+    "expected_chunk_ids": [
+      "48513be2-39d_chunk_0001"
+    ]
+  },
+  {
+    "kb": "policy",
+    "question": "我昨天刚收到货，现在想退掉，能全额退款吗？钱大概多久能回到我账户里？",
+    "reference_answer": "可以全额退款，因为商品签收未超过七天，支持无理由退款。退款金额将原路退回至您的支付账户：若使用微信支付或支付宝支付，预计一到三个工作日到账；若使用银行卡支付，预计三到五个工作日到账。",
+    "expected_chunk_ids": [
+      "48513be2-39d_chunk_0000"
+    ]
+  },
+  {
+    "kb": "policy",
+    "question": "我在手机上怎么申请退货啊？",
+    "reference_answer": "您可以在订单详情页点击申请退货，选择退货原因后提交。审核通过后会有退货地址发送给您，请将商品打包寄回。我们会在签收后的三个工作日内完成退款。",
+    "expected_chunk_ids": [
+      "48513be2-39d_chunk_0004"
+    ]
+  },
+  {
+    "kb": "service",
+    "question": "我昨天刚收到货，现在不想要了能退吗？钱多久能退回来？",
+    "reference_answer": "可以退，本商城支持七天内无理由退款，自商品签收之日起七天内可申请退款，无需说明理由；退款金额原路退回至支付账户，使用微信支付或支付宝支付的订单，退款预计一到三个工作日到账。",
+    "expected_chunk_ids": [
+      "addfbb0b-bf7_chunk_0000"
+    ]
+  },
+  {
+    "kb": "service",
+    "question": "我申请退货后，钱大概多久能退回到我账上？",
+    "reference_answer": "退款审核通过后会原路退回您的支付账户，一般一到三个工作日到账，请您留意账户变动。",
+    "expected_chunk_ids": [
+      "a01741685003b66d_chunk_0009"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "咱们公司技术栈里用的是什么数据库和缓存服务？",
+    "reference_answer": "数据库使用 PostgreSQL，缓存服务使用 Redis。",
+    "expected_chunk_ids": [
+      "c3dbffff6a960cc1_chunk_0004"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "你们系统支持上传哪些格式的文件啊？",
+    "reference_answer": "支持PDF、DOCX、PPTX格式。",
+    "expected_chunk_ids": [
+      "c3dbffff6a960cc1_chunk_0002"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "哪个中文嵌入模型精度最高？",
+    "reference_answer": "BGE-large-zh-v1.5（1024维）是精度最高的中文嵌入模型之一。",
+    "expected_chunk_ids": [
+      "38c37c4568212f38_chunk_0031"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "你们的搜索功能是怎么把关键词搜索和语义搜索结合起来的？",
+    "reference_answer": "系统使用向量检索与 BM25 稀疏检索并行，RRF 算法融合排序结果。",
+    "expected_chunk_ids": [
+      "dd0c1ccb-9de_chunk_0001"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "PyTorch 2.0之后怎么在不改代码的情况下提升模型推理速度？",
+    "reference_answer": "自 2.0 版本起，PyTorch 引入了 torch.compile 功能，通过 JIT（即时编译）将动态图优化为静态图，在保持开发体验的同时大幅提升了推理性能。",
+    "expected_chunk_ids": [
+      "38c37c4568212f38_chunk_0026"
+    ]
+  },
+  {
+    "kb": "tech",
+    "question": "FastAPI比Django和Flask快多少？",
+    "reference_answer": "根据TechEmpower的独立基准测试，在JSON序列化场景下，FastAPI的吞吐量约为Django的3.5倍、Flask的2.8倍。",
+    "expected_chunk_ids": [
+      "38c37c4568212f38_chunk_0005"
+    ]
+  }
+]

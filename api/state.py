@@ -240,7 +240,11 @@ def _rebuild_bm25_bg(kb: str) -> None:
         import lancedb
 
         db = lancedb.connect(settings.vector_uri)
-        rows = db.open_table(_vector_table(kb)).to_pandas().to_dict("records")
+        # ⚠️ 用 to_arrow().to_pylist() 而非 to_pandas().to_dict("records")：
+        # 本项目**不依赖 pandas**, 之前这里每次都抛 `No module named 'pandas'`,
+        # 导致这条"BM25 一致性自愈"路径从未真正生效 —— 属于注释里点名的
+        # "稀疏检索静默缺失"同类问题。pyarrow 是 lancedb 的既有依赖, 无需新增。
+        rows = db.open_table(_vector_table(kb)).to_arrow().to_pylist()
         docs = [
             {
                 "id": r.get("id") or "",

@@ -29,6 +29,19 @@ _EVAL_DIR = os.path.join(_ROOT, "data", "eval")
 _DATASET = os.path.join(_EVAL_DIR, "entity_ambig_dataset.json")
 _CORPUS = os.path.join(_EVAL_DIR, "corpus_chunks.json")
 
+# ⚠️ 这两份数据集在 data/ 下，而 `data/` 被 .gitignore 排除
+# （corpus_chunks.json 约 19MB，属**派生数据**，不适合入库）。
+# 缺失时只跳过「依赖数据集」的用例 —— 上面的纯函数用例照常跑；
+# 否则新克隆的仓库一执行 pytest 就是红的（此前正是 3 failed 的来源）。
+_MISSING_DATA = [p for p in (_DATASET, _CORPUS) if not os.path.exists(p)]
+_needs_dataset = pytest.mark.skipif(
+    bool(_MISSING_DATA),
+    reason=(
+        "缺少本地评测数据集 " + ", ".join(os.path.basename(p) for p in _MISSING_DATA)
+        + "（data/ 未纳入版本控制，需用 scripts/ 下的构建脚本重新生成）"
+    ),
+)
+
 
 # ---------- 纯函数 ----------
 
@@ -59,6 +72,7 @@ def _load():
     return ds, ck
 
 
+@_needs_dataset
 def test_dataset_schema_and_semantics():
     ds, ck = _load()
     assert ds, "entity_ambig_dataset.json 不应为空"
@@ -88,6 +102,7 @@ def test_dataset_schema_and_semantics():
         assert it["reference_answer"].strip() and it["reference_answer"] in g["content"], it["id"]
 
 
+@_needs_dataset
 def test_dataset_competitor_in_pool():
     """自过滤保证：竞争者必须真实进入融合候选池（rerank 实际输入）。
 
@@ -124,6 +139,7 @@ def test_dataset_competitor_in_pool():
 
 # ---------- 端到端小构建 ----------
 
+@_needs_dataset
 def test_builder_small_run(tmp_path):
     # 构建器从 eval-dir 读 corpus_chunks.json，需先把语料复制进临时目录
     shutil.copy(_CORPUS, tmp_path / "corpus_chunks.json")

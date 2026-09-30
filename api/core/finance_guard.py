@@ -19,8 +19,29 @@
 裁决映射
 --------
 fail → 拒答（附原因）。金融场景给错数字比拒答代价高得多。
-warn → 放行 + 附加提示（时效过期 / 同源分部差异），宁提示勿误拒。
+warn → 放行 + 附加提示（数据过期）。
 pass → 放行，零打扰。
+
+⚠️ 这里对引擎给的裁决做了**收窄**（重要，别改回去）
+--------------------------------------------------
+校验引擎原生会给三类信号：`unsupported`（数字无来源支撑）、
+`conflict` / `intra_conflict`（跨源 / 同源"同一指标不同值"）、`stale`（数据过期）。
+其中**只有 unsupported 与 stale 适合拿来管 RAG 出口**，原因是两者的输入前提不同：
+
+引擎原本的用法（/mira/verify/ 页与 MCP 工具）是**一问一事实**的小来源集，
+"同一指标出现两个值 = 矛盾"成立。而 RAG 出口的 sources 是**检索块** ——
+一段多指标文本（一张报表段落里同时有十几个科目 / 分期 / 分部的数字）。
+此时"同一指标不同值"的判定会大面积误判，实测：
+
+  · 22.75% vs 23.42%   → 两个**不同指标**的增长率被当成同一指标矛盾
+  · 62400 vs 38700     → 两个**不同分部**的收入被当成同一指标矛盾
+  · "一、" "二、" 章节序号、以及日期「12 月 31 日」都被抽成数值参与比对
+  · 跨文档问「总营收 + 分部营收」→ 直接判 fail 拒答
+
+实测 7/7 条正常样本全部被误报。在 RAG 出口这条路径上，
+**"把正确答案拒掉"的代价远高于"少提示一次口径差异"**，
+因此这里只保留精度最高的 `unsupported` 作为拒答依据，`stale` 作为提示，
+其余一律不参与裁决、仅记日志（保留可观测性，不影响引擎自身的严格性）。
 
 故障策略
 --------
@@ -31,12 +52,19 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from api.config import settings
 from engines.finance import Source, is_finance_question, verify_finance_answer
 
 logger = logging.getLogger(__name__)
+
+# 参与裁决的 finding 类型（详见模块 docstring 的「收窄」说明）。
+# unsupported = 回答里的数字在来源里找不到支撑 → 拒答（防臆造/篡改，高精度）
+# stale       = 来源数据过期 → 提示
+# conflict / intra_conflict / unknown: 在多指标检索块上误报率过高, 不参与裁决, 仅记日志
+_GUARD_FAIL_KINDS = frozenset({"unsupported"})
+_GUARD_WARN_KINDS = frozenset({"stale"})
 
 
 @dataclass(frozen=True)
@@ -124,26 +152,51 @@ def should_verify(question: str, docs: list[dict]) -> bool:
 
 
 def run_finance_guard(question: str, answer: str, docs: list[dict]) -> FinanceGuardOutcome | None:
-    """执行金融数值校验。不满足启用条件或校验异常时返回 None（放行）。"""
+    """执行金融数值校验。不满足启用条件或校验异常时返回 None（放行）。
+
+    裁决按 _GUARD_FAIL_KINDS / _GUARD_WARN_KINDS **收窄**（理由见模块 docstring）：
+    只有「数字无来源支撑」才拒答，只有「数据过期」才提示，其余 finding 仅记日志。
+    """
     if not should_verify(question, docs):
         return None
     try:
         sources = docs_to_sources(docs)
         if not sources:
             return None
-        verdict = verify_finance_answer(
+        raw = verify_finance_answer(
             answer or "",
             sources,
-            max_age=__import__("datetime").timedelta(days=settings.finance_guard_max_age_days),
+            max_age=timedelta(days=settings.finance_guard_max_age_days),
         )
+        fail_msgs = [f.message for f in raw.findings if f.kind in _GUARD_FAIL_KINDS]
+        warn_msgs = [f.message for f in raw.findings if f.kind in _GUARD_WARN_KINDS]
+        ignored = [f.kind for f in raw.findings if f.kind not in _GUARD_FAIL_KINDS | _GUARD_WARN_KINDS]
+        if ignored:
+            # 可观测性: 被忽略的类型进日志（引擎原生裁决保留在 raw.verdict，便于对比排查）
+            logger.debug(
+                "金融校验护栏忽略 finding 类型=%s（引擎原生裁决=%s）",
+                sorted(set(ignored)),
+                raw.verdict,
+            )
+
+        if fail_msgs:
+            outcome_verdict = "fail"
+            summary = "校验未通过：" + "；".join(fail_msgs)
+        elif warn_msgs:
+            outcome_verdict = "warn"
+            summary = "校验通过（附提示）：" + "；".join(warn_msgs)
+        else:
+            outcome_verdict = "pass"
+            summary = "校验通过：回答中的数值均可由来源支撑。"
+
         outcome = FinanceGuardOutcome(
-            verdict=verdict.verdict,
-            summary=verdict.summary(),
-            findings=tuple(f.message for f in verdict.findings),
+            verdict=outcome_verdict,
+            summary=summary,
+            findings=tuple(fail_msgs + warn_msgs),
         )
-        if outcome.verdict != "pass":
+        if outcome_verdict != "pass":
             logger.info(
-                "金融校验护栏: verdict=%s findings=%d", outcome.verdict, len(outcome.findings)
+                "金融校验护栏: verdict=%s findings=%d", outcome_verdict, len(outcome.findings)
             )
         return outcome
     except Exception as e:  # noqa: BLE001 — 护栏故障一律放行

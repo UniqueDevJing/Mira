@@ -16,7 +16,11 @@ import pytest
 
 from engines.router.intent_router import IntentRouter
 
-SUBSET = Path(__file__).resolve().parents[1] / "data" / "_eval_p1_subset.json"
+# ⚠️ 夹具必须放在 tests/fixtures/（仓库内）。原先读 data/_eval_p1_subset.json，
+# 而 `data/` 被 .gitignore 排除 —— 结果新克隆的仓库一跑 pytest 就在收集阶段
+# FileNotFoundError，这道黄金集门禁等于从仓库里跑不起来。
+# 测试夹具属于源码，不属于运行期数据，故移入 tests/fixtures/ 并纳入版本控制。
+SUBSET = Path(__file__).resolve().parent / "fixtures" / "_eval_p1_subset.json"
 CASES = json.loads(SUBSET.read_text(encoding="utf-8"))
 
 
