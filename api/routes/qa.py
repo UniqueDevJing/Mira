@@ -362,6 +362,7 @@ async def ask_question(req: QARequest, request: Request):
             temperature=req.temperature,
             mode=req.mode,
             history=history_turns,
+            client_history=list(req.history),  # 客户端真实转录: 仅用于会话丢失后的恢复, 不含记忆注入
             session_id=req.session_id,
             allowed_kbs=principal.allowed_kbs,
             owner=principal.key_id,  # S6: session 归属绑定
@@ -408,6 +409,7 @@ async def ask_question(req: QARequest, request: Request):
         message_type=message_type,
         agent="rag",
         memory_used=memory_used,
+        memory_meta=result.get("memory_meta") or {},
         ocr_text=ocr_text,
     )
 
@@ -517,6 +519,7 @@ async def ask_question_stream(req: QARequest, request: Request):
                 temperature=req.temperature,
                 mode=req.mode,
                 history=req.history,
+                client_history=list(req.history),  # 客户端真实转录: 仅用于会话丢失后的恢复
                 session_id=req.session_id,
                 allowed_kbs=principal.allowed_kbs,
                 owner=principal.key_id,  # S6: session 归属绑定

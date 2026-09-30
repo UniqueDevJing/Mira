@@ -81,11 +81,85 @@ from api.core.routing import (
     _route,
     _should_fanout,
 )
-from api.core.session_store import load_session, save_session
+from api.core.session_store import (
+    MAX_TURNS,
+    load_session,
+    normalize_turns,
+    save_session,
+    session_meta,
+)
 from api.schemas.qa import ChatTurn
 from engines.router.intent_router import RoutingResult
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_history(
+    session_id,
+    context_history=None,
+    client_history=None,
+    owner: str | None = None,
+    question: str | None = None,
+) -> tuple[list, list, dict]:
+    """解析本轮上下文, 返回 (提示词历史, 待持久化转录, memory_meta)。
+
+    单一上下文来源原则
+    ------------------
+    服务端会话 (session_id) 是**唯一权威**; 客户端的 history 只是**恢复源**, 不参与"叠加",
+    因此不存在前后端双份历史互相矛盾的问题。
+
+    为什么需要恢复: 会话存在 Redis / 进程内存, 服务重启或超过 TTL 后即空。此前实现是
+    `load_session(session_id) if session_id else history` —— 只要前端带了 session_id,
+    服务端会话一空, **请求里的历史就被整个丢弃**, 模型拿不到任何上下文, 表现为
+    「追问时重新回答、不接着上一轮」。现在改为: 会话空且客户端仍持有转录时, 用它重建会话。
+
+    为什么必须把「提示词历史」与「待持久化转录」分开返回
+    ----------------------------------------------------
+    context_history 里混有**长期记忆层注入的跨会话条目**(形如 "[历史提问] …"), 它们只该
+    影响本轮的提示词, **绝不能写回会话** —— 否则会被永久固化: 下次打开会话时这些内部条目
+    会被当成真实对话渲染出来(实测表现为同一条用户提问重复出现两遍), 并逐轮复制扩散。
+    所以持久化只用 transcript(真实转录): 有会话时=会话内容, 会话丢失时=客户端转录。
+
+    memory_meta: {"turns_used": 本轮实际送入提示词的历史条数(≤ 窗口),
+                  "dropped": 会话生命周期内被挤出窗口的累计条数,
+                  "recovered": 是否由客户端历史恢复}
+    """
+    seed_raw = normalize_turns(client_history if client_history is not None else context_history)
+    # 防御: 有些客户端会把"本轮提问"一并放进 history(前端曾如此 —— 它在 appendUserMessage 之后
+    # 才构造请求体)。而本轮提问在下方会被**显式追加**一次, 若不去重, 同一提问会在会话里存两遍,
+    # 并在重新打开会话时重复渲染给用户看。契约上 history 应当是"此前的对话"。
+    if question and seed_raw and seed_raw[-1]["role"] == "user" and seed_raw[-1]["content"].strip() == question.strip():
+        seed_raw = seed_raw[:-1]
+    session_turns = load_session(session_id) if session_id else []
+    recovered = False
+    if session_turns:
+        prompt_history = session_turns
+        transcript = list(session_turns)
+        dropped = session_meta(session_id)["dropped"] if session_id else 0
+    else:
+        transcript = [ChatTurn(role=n["role"], content=n["content"]) for n in seed_raw[-MAX_TURNS:]]
+        if seed_raw and session_id:
+            # 回填纯净转录(存储层自行裁剪并累计 dropped); 先裁好再传会丢失截断信息
+            save_session(session_id, seed_raw, owner=owner)
+            dropped = session_meta(session_id)["dropped"]
+            recovered = True
+            logger.info("会话上下文由客户端历史恢复: turns=%d (窗口 %d)", len(transcript), MAX_TURNS)
+        else:
+            # 无转录可恢复时, 本轮仍带上长期记忆注入(它只进提示词, 不进会话)
+            dropped = max(0, len(seed_raw) - MAX_TURNS)
+        prompt_history = transcript if seed_raw else list(context_history or [])
+    return prompt_history, transcript, {
+        "turns_used": min(len(prompt_history), MAX_TURNS),
+        "dropped": dropped,
+        "recovered": recovered,
+    }
+
+
+def _finish(result: dict, memory_meta: dict) -> dict:
+    """把记忆层元信息挂到结果上 (供前端提示"更早的对话已超出窗口")。"""
+    result["memory_meta"] = memory_meta
+    return result
+
 
 
 def _record_qa_quality(result: dict) -> None:
@@ -128,16 +202,20 @@ async def ask(
     session_id=None,
     allowed_kbs=None,
     owner: str | None = None,
+    client_history=None,
 ) -> dict:
     """编排入口: 缓存命中直接返回 → 路由 → skill 执行 → 组装响应。
 
     allowed_kbs: principal 可访问的知识库集合(None=不限制); 自动路由命中非授权库时抛 KBForbiddenError。
     owner: session 归属者 key_id (S6), 会话历史写入时绑定, 供 IDOR 校验。
+    history / client_history: 前者是送进提示词的上下文(可能含长期记忆注入), 后者是客户端
+        持有的真实对话转录, 仅在服务端会话丢失时用于恢复。二者语义不同, 不可混用。
     """
     start = time.time()
 
-    # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history, 刷新/换设备不丢)
-    effective_history = load_session(session_id) if session_id else history
+    # 上下文解析: 服务端会话权威 + 客户端转录兜底(会话过期/重启后自愈)
+    # transcript ≠ effective_history: 后者含长期记忆注入, 只进提示词、绝不写回会话
+    effective_history, transcript, memory_meta = _resolve_history(session_id, history, client_history, owner, question)
 
     candidate_kbs = _candidate_kbs(allowed_kbs)
 
@@ -175,14 +253,14 @@ async def ask(
                 if session_id:
                     save_session(
                         session_id,
-                        list(effective_history)
+                        list(transcript)
                         + [
                             ChatTurn(role="user", content=question),
                             ChatTurn(role="assistant", content=result.get("answer", "")),
                         ],
                         owner=owner,
                     )
-                return result
+                return _finish(result, memory_meta)
         qa_cache_misses_total.inc()
 
     llm = get_llm_client()
@@ -261,14 +339,14 @@ async def ask(
     if session_id:
         save_session(
             session_id,
-            list(effective_history)
+            list(transcript)
             + [ChatTurn(role="user", content=question), ChatTurn(role="assistant", content=result.get("answer", ""))],
             owner=owner,
         )
 
     _record_qa_quality(result)
     _report_embed_cache()
-    return result
+    return _finish(result, memory_meta)
 
 
 async def _skill_rag(
@@ -485,6 +563,7 @@ async def ask_stream(
     session_id=None,
     allowed_kbs=None,
     owner: str | None = None,
+    client_history=None,
 ):
     """流式编排入口: 缓存命中重放 → 路由 → 检索 → LLM 逐块产出。yield SSE 事件 dict。
 
@@ -497,8 +576,9 @@ async def ask_stream(
     """
     start = time.time()
 
-    # 会话解析: 携带 session_id 时服务端按 session 维护历史(覆盖 body.history)
-    effective_history = load_session(session_id) if session_id else history
+    # 上下文解析: 服务端会话权威 + 客户端转录兜底(会话过期/重启后自愈), 与非流式 ask() 共用
+    # transcript ≠ effective_history: 后者含长期记忆注入, 只进提示词、绝不写回会话
+    effective_history, transcript, memory_meta = _resolve_history(session_id, history, client_history, owner, question)
     candidate_kbs = _candidate_kbs(allowed_kbs)
 
     cache = get_qa_cache() if settings.qa_cache_enabled else None
@@ -528,12 +608,14 @@ async def ask_stream(
                 qa_latency_seconds.observe(time.time() - start)
                 qa_requests_total.labels(mode=mode, status="cache_hit").inc()
                 async for ev in _replay_cache_stream(hit):
+                    if ev.get("type") == "done":
+                        ev["memory_meta"] = memory_meta  # 前端据此提示"更早对话已超窗口"
                     yield ev
                 # 会话持久化: 缓存命中也记录本轮(与 ask() 非流式路径保持一致)
                 if session_id:
                     save_session(
                         session_id,
-                        list(effective_history)
+                        list(transcript)
                         + [
                             ChatTurn(role="user", content=question),
                             ChatTurn(role="assistant", content=hit.get("answer", "")),
@@ -628,13 +710,15 @@ async def ask_stream(
             if session_id:
                 save_session(
                     session_id,
-                    list(effective_history)
+                    list(transcript)
                     + [
                         ChatTurn(role="user", content=question),
                         ChatTurn(role="assistant", content=cached.get("answer", "")),
                     ],
                     owner=owner,
                 )
+        if ev.get("type") == "done":
+            ev["memory_meta"] = memory_meta  # 前端据此提示"更早对话已超窗口"
         yield ev
 
     qa_latency_seconds.observe(time.time() - start)

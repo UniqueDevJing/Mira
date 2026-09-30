@@ -31,20 +31,15 @@ window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(
 
 /* ── 空状态（居中） ── */
 .empty-state {
-  display: none; flex-direction: column; align-items: center; justify-content: flex-start;
-  flex: 1; padding: 20px 24px 12px; gap: 16px; min-height: 200px;
-  overflow-y: auto; min-height: 0;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1; padding: 24px; gap: 14px; min-height: 0; overflow-y: auto;
 }
 .empty-state.show { display: flex; }
-/* 内容不足一屏时保持视觉居中, 超高时可滚动不被裁切 */
-.empty-state .brand-center { margin-top: auto; }
-.empty-state .upload-hint { margin-bottom: auto; }
-.brand-center { text-align: center; }
+.brand-center { text-align: center; display: flex; flex-direction: column; align-items: center; }
 .welcome-title {
-  font-size: 26px; font-weight: 700; color: var(--text); margin: 12px 0 6px; letter-spacing: -.02em;
+  font-size: 25px; font-weight: 700; color: var(--text); margin: 14px 0 6px; letter-spacing: -.02em;
 }
-.welcome-subtitle { font-size: 14px; color: var(--text-2); margin-bottom: 4px; }
-.upload-hint { font-size: 12px; color: var(--text-3); }
+.welcome-subtitle { font-size: 13.5px; color: var(--text-3); }
 
 /* ── 侧边上传按钮（在侧栏已有） ── */
 .sidebar-upload-btn {
@@ -81,85 +76,59 @@ window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(
 .status-upload { background: rgba(99,102,241,.12); color: var(--primary); }
 .kb-empty-msg { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
-/* ── 科技感背景: 渐变图层 + 粒子网格叠加 ──
-   ⚠️ 这里的规则必须「主题感知」，且图片走相对路径。原先写死
-   url('/web/assets/tech-bg.jpg') + #080c18 有两个问题：
-   ① 子路径部署（/mira/）下该绝对路径 404，背景图整个丢失；
-   ② 深色底与遮罩不受 data-theme 约束，而本 <style> 在 common.css 之后，
-      会覆盖掉亮色主题的浅色渐变 → 亮色模式被蒙上一层黑纱。
-   相对路径以文档 URL 为基准：/mira/ → /mira/web/assets/…；根部署 → /web/assets/…，两者都对。 */
-body{ background: var(--bg-deep); }
-[data-theme="dark"] body{
-  background: var(--bg-deep) url('web/assets/tech-bg.jpg') center/cover no-repeat fixed;
+/* ── 光影流体背景 ──
+   四团大半径柔光在极慢周期里漂移 + 缩放, 形成流体般的观感。纯 CSS: 无 canvas、无图片、无 JS。
+   为什么不用原来的粒子网格 + 科技底图:
+   ① 粒子网格每帧全量重绘 54 个节点与连线, 与内容抢渲染预算且观感"吵"；
+   ② 底图走 url('web/assets/tech-bg.jpg') —— 一次绝对路径写法曾在 /mira/ 子路径部署下 404 丢图,
+      现在彻底去掉这一层依赖;
+   ③ 动效周期 46–72s 且幅度克制, 安静、不抢内容, 并尊重 prefers-reduced-motion。 */
+[data-theme="dark"]{
+  --aurora-1:rgba(99,102,241,.34); --aurora-2:rgba(139,92,246,.30);
+  --aurora-3:rgba(56,189,248,.20);  --aurora-4:rgba(236,72,153,.15);
 }
-.tech-bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.75;}
-[data-theme="dark"] body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:linear-gradient(180deg,rgba(8,12,24,.72) 0%,rgba(8,12,24,.55) 40%,rgba(8,12,24,.78) 100%);}
+[data-theme="light"]{
+  --aurora-1:rgba(99,102,241,.20); --aurora-2:rgba(139,92,246,.16);
+  --aurora-3:rgba(14,165,233,.14);  --aurora-4:rgba(236,72,153,.09);
+}
+body{ background: var(--bg-deep); }
+.aurora{position:fixed;inset:-12%;z-index:0;pointer-events:none;overflow:hidden;}
+.aurora i{position:absolute;display:block;border-radius:50%;filter:blur(64px);
+  will-change:transform;transform:translate3d(0,0,0);}
+.aurora i:nth-child(1){width:46vw;height:46vw;left:-8vw;top:-14vh;
+  background:radial-gradient(circle,var(--aurora-1) 0%,transparent 68%);animation:aurora-a 46s ease-in-out infinite alternate;}
+.aurora i:nth-child(2){width:38vw;height:38vw;right:-6vw;top:8vh;
+  background:radial-gradient(circle,var(--aurora-2) 0%,transparent 68%);animation:aurora-b 58s ease-in-out infinite alternate;}
+.aurora i:nth-child(3){width:42vw;height:42vw;left:18vw;bottom:-18vh;
+  background:radial-gradient(circle,var(--aurora-3) 0%,transparent 70%);animation:aurora-c 72s ease-in-out infinite alternate;}
+.aurora i:nth-child(4){width:26vw;height:26vw;right:14vw;bottom:-6vh;
+  background:radial-gradient(circle,var(--aurora-4) 0%,transparent 70%);animation:aurora-b 64s ease-in-out infinite alternate-reverse;}
+@keyframes aurora-a{from{transform:translate3d(0,0,0) scale(1);}to{transform:translate3d(9vw,8vh,0) scale(1.18);}}
+@keyframes aurora-b{from{transform:translate3d(0,0,0) scale(1.1);}to{transform:translate3d(-8vw,11vh,0) scale(1);}}
+@keyframes aurora-c{from{transform:translate3d(0,0,0) scale(1.05);}to{transform:translate3d(6vw,-9vh,0) scale(1.22);}}
+@media (prefers-reduced-motion: reduce){ .aurora i{animation:none !important;} }
 .app-layout{position:relative;z-index:1;}
 /* 发光卡片质感 */
-.agent-card,.ticket-card,.input-container{backdrop-filter:blur(8px);}
-.agent-card.selected{box-shadow:0 0 0 1px var(--primary),0 0 18px var(--primary-glow);}
+.ticket-card,.input-container{backdrop-filter:blur(8px);}
 .input-container:focus-within{box-shadow:0 0 0 1px var(--primary),0 0 22px var(--primary-glow);}
 .image-ask-btn{font-size:16px;line-height:1;}
 .image-ask-btn:hover{filter:brightness(1.25);}
 .ocr-note{margin:8px 0 2px;padding:6px 10px;border-radius:8px;font-size:12px;color:var(--text-2);
   background:rgba(99,102,241,.08);border:1px dashed rgba(99,102,241,.35);}
 
-/* ── 多 Agent 框架首屏面板 ── */
-.agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:520px;margin:14px auto 0;width:100%;}
-.agent-card{padding:12px 14px;border-radius:12px;background:var(--bg-2,rgba(127,127,127,.06));
-  border:1px solid rgba(127,127,127,.18);text-align:left;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;cursor:pointer;position:relative;}
-.agent-card:hover{transform:translateY(-2px);border-color:var(--primary);}
-.agent-card.selected{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary),0 4px 14px rgba(99,102,241,.18);}
-.agent-card.selected::after{content:'✓ 已选';position:absolute;top:8px;right:10px;font-size:11px;color:var(--primary);}
-.agent-icon{font-size:20px;}
-.agent-name{font-weight:600;font-size:14px;margin:6px 0 2px;}
-.agent-desc{font-size:12px;color:var(--text-3);line-height:1.4;}
-.agent-hint{font-size:12px;color:var(--primary);text-align:center;margin-top:10px;min-height:16px;}
-.flow-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:560px;margin:12px auto 0;}
-.flow-node{font-size:11.5px;padding:3px 9px;border-radius:99px;background:rgba(99,102,241,.1);color:var(--primary);white-space:nowrap;}
-.flow-arrow{color:var(--text-3);font-size:12px;}
-.try-prompts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px;align-items:center;}
-.try-label{font-size:12px;color:var(--text-3);}
-.try-btn{font-size:12.5px;padding:6px 12px;border-radius:99px;border:1px solid rgba(127,127,127,.25);
-  background:transparent;color:var(--text-1);cursor:pointer;transition:all .2s ease;}
-.try-btn:hover{border-color:var(--primary);color:var(--primary);}
-.brand-center .welcome-subtitle{color:var(--primary);font-weight:500;}
-
-/* ── 首屏「可信交付」条: 把核心差异（来源引用 + 数值校验护栏）讲到页面上 ── */
-.trust-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 14px;
-  max-width:620px;margin:16px auto 0;padding:11px 16px;border-radius:12px;
-  background:var(--bg-card);border:1px solid var(--border-card);box-shadow:var(--shadow-card);}
-.trust-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);line-height:1.4;}
-.trust-item .trust-ico{display:inline-flex;align-items:center;flex:none;}
-.trust-item .icon{width:15px;height:15px;color:var(--ok);}
-.trust-link{font-size:12px;font-weight:600;color:var(--primary);white-space:nowrap;}
-.trust-link:hover{text-decoration:underline;}
-
-/* ── 内联 SVG 图标尺寸（emoji 靠字号撑开，换成 SVG 后需显式给）── */
-.agent-icon{display:inline-flex;align-items:center;justify-content:center;
-  width:34px;height:34px;border-radius:10px;font-size:0;color:var(--primary);
-  background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.18);}
-.agent-icon .icon{width:18px;height:18px;}
-.agent-chip .chip-ico{display:inline-flex;align-items:center;margin-right:4px;vertical-align:-2px;}
-.agent-chip .chip-ico .icon{width:13px;height:13px;}
-/* 侧栏 API Key: 默认折叠, 公开演示下不再把输入框摊在脸上 */
-.key-details{margin-bottom:6px;}
-.key-details summary{font-size:11px;color:var(--text-3);cursor:pointer;list-style:none;
-  padding:2px 0;user-select:none;}
-.key-details summary::-webkit-details-marker{display:none;}
-.key-details summary::before{content:'▸ ';font-size:10px;}
-.key-details[open] summary::before{content:'▾ ';}
-.key-details summary:hover{color:var(--text-2);}
-.key-details .sidebar-key-input{margin-top:6px;}
-
-/* ── Agent 切换条 (常驻输入区上方, 随时可切) ── */
-.agent-bar{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;align-items:center;}
-.agent-chip{font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid rgba(127,127,127,.25);
-  background:transparent;color:var(--text-2);cursor:pointer;transition:all .18s ease;white-space:nowrap;}
-.agent-chip:hover{border-color:var(--primary);color:var(--primary);}
-.agent-chip.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600;}
-.agent-chip .chip-ico{margin-right:3px;}
+/* ── 首屏 ──
+   刻意只保留三件东西: 标识、一句定位、一行护栏说明。
+   原先这里叠了四张 Agent 卡片 + 流程条 + 试问按钮 + 上传提示, 五块内容互相争注意力,
+   而它们要表达的信息在界面上都能自然看到（路由结果、来源引用、检索可视化）。
+   护栏那一行留着: 它是这个系统真正的差异点（回答里的数字要与原文强制对账）, 且只有一句。 */
+.brand-mark{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;
+  border-radius:14px;background:linear-gradient(135deg,var(--primary),var(--primary-2));
+  color:#fff;box-shadow:0 8px 26px var(--primary-glow);}
+.brand-mark .icon{width:24px;height:24px;}
+.trust-line{display:inline-flex;align-items:center;gap:6px;margin-top:2px;padding:7px 14px;
+  border-radius:99px;font-size:12px;color:var(--text-2);
+  background:var(--bg-card);border:1px solid var(--border-card);}
+.trust-line .icon{width:14px;height:14px;color:var(--ok);flex:none;}
 
 /* ── 多 Agent 框架卡片: 投诉工单 / 待确认操作 ── */
 .ticket-card{margin:10px 0 4px;padding:10px 12px;border-radius:10px;font-size:13px;
@@ -179,6 +148,11 @@ body{ background: var(--bg-deep); }
 /* 长会话裁剪占位提示 */
 .hidden-msgs-ph{padding:8px 12px;margin:4px 0;font-size:12px;color:var(--text-3);text-align:center;
   background:var(--bg-card);border:1px dashed var(--border-subtle);border-radius:var(--radius-sm);cursor:default;}
+/* 上下文超窗提示: 如实告知被挤出窗口的对话条数, 而不是让模型"悄悄失忆" */
+.memory-note{display:flex;align-items:flex-start;gap:8px;max-width:var(--feed-max-width);margin:6px auto;
+  padding:9px 13px;font-size:12px;line-height:1.5;color:var(--text-2);border-radius:var(--radius);
+  background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);}
+.memory-note .icon{width:14px;height:14px;color:var(--warn);flex:none;margin-top:2px;}
   /* 回到底部浮动按钮 */
   .main-content{position:relative;}
   .scroll-bottom-btn{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:20;
@@ -188,7 +162,7 @@ body{ background: var(--bg-deep); }
 </style>
 </head>
 <body>
-<canvas id="techBg" class="tech-bg" aria-hidden="true"></canvas>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="app-layout">
 
 <!-- 侧栏：会话 + 文档管理 -->
@@ -196,6 +170,9 @@ body{ background: var(--bg-deep); }
   <div class="sidebar-inner">
     <div class="sidebar-header">
       <button id="newChatBtn" class="new-chat-btn"><span>&#10010;</span> 新对话</button>
+      <!-- 侧栏只保留这一个功能按钮。原来底部还堆着 API Key 输入框（公开演示不该把密钥输入
+           摊在界面上）、系统指标入口与管理后台链接 —— 那几块与"回答问题"无关, 已移除。 -->
+      <button id="themeToggle" class="icon-btn" title="切换主题" aria-label="切换主题"></button>
     </div>
     <div id="sessionList" class="session-list"></div>
 
@@ -210,18 +187,6 @@ body{ background: var(--bg-deep); }
         <span>&#43;</span> 上传文件到知识库
       </button>
     </div>
-
-    <div class="sidebar-footer">
-      <details class="key-details">
-        <summary>API Key 设置</summary>
-        <input id="apiKeyInput" class="sidebar-key-input" placeholder="留空则按服务端默认权限" spellcheck="false">
-      </details>
-      <div class="sidebar-actions">
-        <button class="nav-link" id="metricsOpenBtn" title="系统指标（切分策略 / 核心指标 / 降级分布）" aria-label="系统指标"></button>
-        <a class="nav-link" href="admin" title="管理后台"><i class="fa fa-cog"></i></a>
-        <button id="themeToggle" class="icon-btn" title="切换主题"></button>
-      </div>
-    </div>
   </div>
 </aside>
 
@@ -232,101 +197,36 @@ body{ background: var(--bg-deep); }
   <div id="chatFlow" class="chat-flow">
     <!-- 消息容器 -->
     <div id="chatContainer"></div>
-    <!-- 空状态：居中展示 -->
+    <!-- 空状态：只讲"这是什么"和"凭什么可信", 不放操作引导 -->
     <div id="emptyState" class="empty-state">
       <div class="brand-center">
-        <span class="brand-dot-lg"></span>
-        <h1 class="welcome-title">Mira</h1>
-        <p class="welcome-subtitle">多 Agent 智能分流 · 检索增强问答</p>
+        <span class="brand-mark" data-icon="sparkles"></span>
+        <h1 class="welcome-title">基于 RAG 的可信问答系统</h1>
+        <p class="welcome-subtitle">检索增强问答 · 答案附来源引用 · 不确定就拒答</p>
       </div>
-      <div class="agent-grid" id="agentGrid">
-        <div class="agent-card" data-agent="consult" title="点击锁定咨询模式">
-          <div class="agent-icon" data-icon="search"></div>
-          <div class="agent-name">咨询 Agent</div>
-          <div class="agent-desc">RAG 检索 + 融合重排 + 来源引用</div>
-        </div>
-        <div class="agent-card" data-agent="operation" title="点击锁定操作模式">
-          <div class="agent-icon" data-icon="sliders"></div>
-          <div class="agent-name">操作 Agent</div>
-          <div class="agent-desc">文档查询 / 高危操作二次确认</div>
-        </div>
-        <div class="agent-card" data-agent="complaint" title="点击锁定投诉模式">
-          <div class="agent-icon" data-icon="alert-triangle"></div>
-          <div class="agent-name">投诉 Agent</div>
-          <div class="agent-desc">情绪识别 + 自动建单 + 升级人工</div>
-        </div>
-        <div class="agent-card" data-agent="chat" title="点击锁定闲聊模式">
-          <div class="agent-icon" data-icon="message-circle"></div>
-          <div class="agent-name">闲聊 Agent</div>
-          <div class="agent-desc">跳过检索, 秒级轻量回复</div>
-        </div>
+      <div class="trust-line">
+        <span data-icon="shield-check"></span>
+        <span>回答里的数字与检索原文强制对账，对不上即拒答</span>
       </div>
-      <div class="agent-hint" id="agentHint">点击卡片锁定 Agent, 或直接提问自动分流</div>
-      <div class="flow-strip">
-        <span class="flow-node">输入 (文本/图片)</span><span class="flow-arrow">→</span>
-        <span class="flow-node">意图分类</span><span class="flow-arrow">→</span>
-        <span class="flow-node">Agent 分发</span><span class="flow-arrow">→</span>
-        <span class="flow-node">置信度评估</span><span class="flow-arrow">→</span>
-        <span class="flow-node">记忆层</span><span class="flow-arrow">→</span>
-        <span class="flow-node">出口护栏</span>
-      </div>
-      <div class="trust-strip">
-        <span class="trust-item">
-          <span class="trust-ico" data-icon="shield-check"></span>
-          <span>数值校验护栏：回答里的数字与检索原文强制对账，对不上即拒答</span>
-        </span>
-        <a class="trust-link" href="verify/">查看校验引擎 →</a>
-      </div>
-      <div class="try-prompts">
-        <span class="try-label">试试:</span>
-        <button class="try-btn" data-q="七天内可以无理由退款吗">咨询·退款政策</button>
-        <button class="try-btn" data-q="公司2025年的营业收入和净利润分别是多少">财务·年报数据</button>
-        <button class="try-btn" data-q="帮我列出文档列表">操作·列文档</button>
-        <button class="try-btn" data-q="太差了! 退款拖着不解决, 我要投诉">投诉·建工单</button>
-        <button class="try-btn" data-q="你好呀">闲聊·打个招呼</button>
-      </div>
-      <p class="upload-hint">从左侧面板上传文档到知识库 · 点相机按钮可传图片提问</p>
     </div>
   </div>
 
   <button id="scrollBottomBtn" class="scroll-bottom-btn" hidden aria-label="回到底部">↓ 新消息</button>
 
-  <!-- 输入框：固定底部 -->
+  <!-- 输入区：只留提问本身。原"Agent 切换条"（5 个胶囊）已移除 —— 意图由后端路由自动判断,
+       把它做成常驻控件等于让用户替系统做一次它自己能做的决定, 且每轮都占一行视觉重量。
+       上传入口保留在侧栏（那里有明确的"知识库文档"上下文）, 此处不再重复放一个按钮。 -->
   <footer id="inputAreaWrap" class="input-area">
-    <div class="agent-bar" id="agentBar" title="选择本轮由哪个 Agent 处理 (自动分流=按意图自动判断)">
-      <button class="agent-chip active" data-agent=""><span class="chip-ico" data-icon="bolt"></span>自动分流</button>
-      <button class="agent-chip" data-agent="consult"><span class="chip-ico" data-icon="search"></span>咨询</button>
-      <button class="agent-chip" data-agent="operation"><span class="chip-ico" data-icon="sliders"></span>操作</button>
-      <button class="agent-chip" data-agent="complaint"><span class="chip-ico" data-icon="alert-triangle"></span>投诉</button>
-      <button class="agent-chip" data-agent="chat"><span class="chip-ico" data-icon="message-circle"></span>闲聊</button>
-    </div>
     <div class="input-container" id="inputWrapper">
       <input type="file" id="imageInput" class="hidden" accept="image/png,image/jpeg,image/webp">
       <button id="imageAskBtn" class="icon-btn image-ask-btn" data-icon="camera" title="图片提问: 选择图片, OCR 识别后由系统解答" aria-label="图片提问"></button>
       <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx,image/png,image/jpeg,image/webp" multiple>
-      <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库"></button>
-      <textarea id="questionInput" rows="1" placeholder="基于知识库提问..." autocomplete="off"></textarea>
+      <textarea id="questionInput" rows="1" placeholder="基于知识库提问，可连续追问…" autocomplete="off"></textarea>
       <button id="sendBtn" class="send-btn" title="发送" disabled></button>
       <button id="stopBtn" class="stop-btn" title="停止生成"></button>
     </div>
   </footer>
 </main>
-</div>
-
-<!-- 系统指标面板: ①切分策略 ②核心指标 ③单轮耗时 ④降级/异常分布 -->
-<div id="metricsOverlay" class="metrics-overlay" hidden>
-  <div class="metrics-panel" role="dialog" aria-modal="true" aria-label="系统指标">
-    <div class="metrics-head">
-      <h2>系统指标</h2>
-      <div class="metrics-head-actions">
-        <button id="metricsRefreshBtn" class="icon-btn" title="刷新数据"></button>
-        <button id="metricsCloseBtn" class="icon-btn" title="关闭"></button>
-      </div>
-    </div>
-    <div class="metrics-body" id="metricsBody">
-      <div class="metrics-loading">正在加载指标…</div>
-    </div>
-  </div>
 </div>
 
 <script src="web/common.js"></script>
@@ -340,16 +240,15 @@ body{ background: var(--bg-deep); }
 
   var API = RAG.API || '/api/v1';
   var currentController = null, chatHistory = [], isStreaming = false, currentSid = '';
-  var _currentAgent = '';       // Agent 切换条当前锁定 (空=自动分流); 必须在 IIFE 顶层, startStream/askWithImage 才能访问
   var uploadedDocs = {}, localUploads = [];
 
   var $ = function(id){ return document.getElementById(id); };
   var questionInput = $('questionInput'), sendBtn = $('sendBtn'), stopBtn = $('stopBtn');
   var chatContainer = $('chatContainer'), chatFlow = $('chatFlow'), emptyState = $('emptyState');
   var sidebarUploadBtn = $('sidebarUploadBtn'), kbCount = $('kbCount'), kbFileList = $('kbFileList');
-  var apiKeyInput = $('apiKeyInput'), themeToggle = $('themeToggle'), newChatBtn = $('newChatBtn'), scrollBottomBtn = $('scrollBottomBtn');
+  var themeToggle = $('themeToggle'), newChatBtn = $('newChatBtn'), scrollBottomBtn = $('scrollBottomBtn');
   var sessionList = $('sessionList'), resizeHandle = $('resizeHandle');
-  var uploadTrigger = $('uploadTrigger'), fileInput = $('fileInput');
+  var fileInput = $('fileInput');
 
   /* 把静态标记里的 data-icon="name" 渲染成内联 SVG（icons.js 的 RAG.icon）。
      为什么不直接写 emoji: emoji 的字形与基线高度随平台/字体变化，同一份代码在
@@ -366,11 +265,12 @@ body{ background: var(--bg-deep); }
   }
 
   function init() {
-    apiKeyInput.value = localStorage.getItem('rag_api_key') || '';
     paintIcons(document);
     if (typeof RAG.updateThemeIcon === 'function') RAG.updateThemeIcon();
-    loadSessions(); showEmptyState(); setupEvents();
-    initMetricsPanel();   // 绑定「系统指标」按钮 / 关闭 / 刷新 / Esc, 否则面板不可达
+    // 恢复上次打开的会话: 刷新后仍接得上上下文, 否则刷新即"失忆"(服务端会话其实还在)
+    currentSid = RAG.getSessionId();
+    loadSessions(); setupEvents();
+    loadConversation(currentSid);
   }
 
   function _getSessions(){ try { return JSON.parse(localStorage.getItem('rag_sessions') || '[]'); } catch(e){ return []; } }
@@ -427,16 +327,26 @@ body{ background: var(--bg-deep); }
 
   function switchSession(sid){ currentSid=sid; localStorage.setItem('rag_session_id',sid); loadSessions(); loadConversation(sid); }
 
+  /* 开新会话必须换 session_id。
+     ⚠️ 这里原来用的是 RAG.getSessionId() —— 那个方法只在 localStorage 缺失时才新建 id,
+     已存在就直接返回旧的。于是点「新对话」后 sid 完全不变、界面也没清空, 用户以为开了新对话,
+     后端却还挂在旧会话的上下文上继续作答, 而前端 chatHistory 已是空的:
+     前后端上下文当场不一致, 观感就是「记忆混乱 / 答非所问」。
+     common.js 里早有 resetSessionId()(生成新 id + 调后端 DELETE 清掉旧会话), 这里改为调用它。 */
   function createNewSession(){
-    currentSid=RAG.getSessionId(); localStorage.setItem('rag_session_id',currentSid);
+    currentSid=RAG.resetSessionId();
+    localStorage.setItem('rag_session_id',currentSid);
     var sessions=_getSessions();
     sessions.unshift({session_id:currentSid,title:'新对话',created_at:_nowISO(),updated_at:_nowISO()});
-    _saveSessions(sessions); chatHistory=[]; loadSessions(); showEmptyState();
+    _saveSessions(sessions); chatHistory=[]; chatContainer.innerHTML=''; _hiddenCount=0; updateHiddenPlaceholder();
+    loadSessions(); showEmptyState(); questionInput.focus();
   }
 
   function resetAndShowEmpty(){
-    currentSid=RAG.getSessionId(); localStorage.setItem('rag_session_id',currentSid);
-    chatHistory=[]; chatContainer.innerHTML=''; showEmptyState();
+    currentSid=RAG.resetSessionId();
+    localStorage.setItem('rag_session_id',currentSid);
+    chatHistory=[]; chatContainer.innerHTML=''; _hiddenCount=0; updateHiddenPlaceholder();
+    loadSessions(); showEmptyState();
   }
 
   function showEmptyState(){
@@ -447,7 +357,9 @@ body{ background: var(--bg-deep); }
   }
 
   function loadConversation(sid){
-    chatContainer.innerHTML=''; chatHistory=[]; hideEmptyState();
+    currentSid=sid;
+    chatContainer.innerHTML=''; chatHistory=[]; _hiddenCount=0; _memoryNoteShown=false;
+    updateHiddenPlaceholder(); hideEmptyState();
     fetch(API+'/qa/session/'+encodeURIComponent(sid),{method:'GET',headers:RAG.authHeaders()})
       .then(function(r){if(!r.ok)return;return r.json();})
       .then(function(data){
@@ -553,13 +465,10 @@ body{ background: var(--bg-deep); }
       themeToggle.dataset.bound='1';
       themeToggle.addEventListener('click',function(){RAG.toggleTheme();if(typeof RAG.updateThemeIcon==='function')RAG.updateThemeIcon();});
     }
-    apiKeyInput.addEventListener('change',function(){localStorage.setItem('rag_api_key',apiKeyInput.value.trim());});
     newChatBtn.addEventListener('click',createNewSession);
 
-    // 侧栏上传按钮
+    // 侧栏上传按钮（输入区不再重复放一个）
     sidebarUploadBtn.addEventListener('click',function(){fileInput.click();});
-    // 输入框中的上传按钮
-    if(uploadTrigger)uploadTrigger.addEventListener('click',function(){fileInput.click();});
     if(fileInput)fileInput.addEventListener('change',function(){
       if(!fileInput.files.length)return;
       var files=Array.from(fileInput.files);
@@ -567,7 +476,7 @@ body{ background: var(--bg-deep); }
       if(img){askWithImage(img);}else{handleKBUpload(files);}
       fileInput.value='';
     });
-    // 📷 专属图片提问入口
+    // 相机按钮: 图片提问
     var imageInput=$('imageInput'),imageAskBtn=$('imageAskBtn');
     if(imageAskBtn)imageAskBtn.addEventListener('click',function(){if(imageInput)imageInput.click();});
     if(imageInput)imageInput.addEventListener('change',function(){
@@ -578,38 +487,6 @@ body{ background: var(--bg-deep); }
     questionInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!isStreaming){e.preventDefault();askQuestion();}});
     sendBtn.addEventListener('click',function(){if(!sendBtn.disabled)askQuestion();});
     stopBtn.addEventListener('click',function(){if(currentController)stopGeneration();});
-    // ── 多 Agent: 切换条 (常驻, 随时可切) ──
-    var agentBar=$('agentBar');
-    if(agentBar)agentBar.addEventListener('click',function(e){
-      var chip=e.target.closest('.agent-chip');
-      if(!chip)return;
-      agentBar.querySelectorAll('.agent-chip').forEach(function(c){c.classList.remove('active');});
-      chip.classList.add('active');
-      _currentAgent=chip.getAttribute('data-agent')||'';
-      // 空状态卡片选中态同步
-      var grid=$('agentGrid'),hint=$('agentHint');
-      if(grid){
-        grid.querySelectorAll('.agent-card').forEach(function(c){c.classList.toggle('selected',c.getAttribute('data-agent')===_currentAgent);});
-      }
-      if(hint)hint.textContent=_currentAgent?('已锁定 '+( {consult:'咨询',operation:'操作',complaint:'投诉',chat:'闲聊'}[_currentAgent]||_currentAgent)+' Agent, 输入框提问即由该 Agent 处理'):'点击卡片锁定 Agent, 或直接提问自动分流';
-    });
-    // ── 多 Agent: 首屏卡片点击 = 锁定对应 Agent ──
-    var agentGrid=$('agentGrid');
-    if(agentGrid)agentGrid.addEventListener('click',function(e){
-      var card=e.target.closest('.agent-card');
-      if(!card)return;
-      var agent=card.getAttribute('data-agent')||'';
-      var chip=agentBar?agentBar.querySelector('.agent-chip[data-agent="'+agent+'"]'):null;
-      if(chip)chip.click();else{_currentAgent=agent;}
-      questionInput.focus();
-    });
-    // ── 多 Agent: 首屏示例问题一键发送 ──
-    emptyState.addEventListener('click',function(e){
-      var btn=e.target.closest('.try-btn');
-      if(!btn)return;
-      questionInput.value=btn.getAttribute('data-q')||'';
-      autoResize(questionInput);toggleSendBtn();askQuestion();
-    });
 
     document.addEventListener('click',function(e){
       var copyBtn=e.target.closest('[data-copy-answer]');
@@ -678,7 +555,7 @@ body{ background: var(--bg-deep); }
         createStreamingCard();setPipelineStep('route','active');updateUIState(true);
         fetch(API+'/qa/ask',{
           method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),
-          body:JSON.stringify({question:question,image_base64:base64,top_k:5,session_id:RAG.getSessionId(),force_agent:_currentAgent||null})
+          body:JSON.stringify({question:question,image_base64:base64,top_k:5,session_id:RAG.getSessionId(),history:chatHistory.slice(0,-1).slice(-20)})
         }).then(function(r){return r.json();}).then(function(d){
           finalizeAnswer(d.answer||'(无内容)',{message_type:d.message_type||'consult',agent:d.agent||'rag',kb_id:d.kb_id,routing_source:d.routing_source,done:d},(d.sources||[]).map(function(s){return{title:s.id,score:s.score};}),d.retrieval_meta);
           if(d.ocr_text){
@@ -696,7 +573,7 @@ body{ background: var(--bg-deep); }
     if(chatFlow)chatFlow.addEventListener('scroll',_onChatScroll);
     if(scrollBottomBtn)scrollBottomBtn.addEventListener('click',function(){if(chatFlow)chatFlow.scrollTop=chatFlow.scrollHeight;_autoScroll=true;scrollBottomBtn.hidden=true;});
     setupResize();
-    loadKnowledgeBase();
+    // 知识库列表由 loadConversation 统一拉取（init 必经该路径），此处不重复请求
   }
 
   function setupResize(){
@@ -714,9 +591,13 @@ body{ background: var(--bg-deep); }
     var question=questionInput.value.trim();if(!question)return;
     _lastQuestion=question;
     if(currentController){currentController.abort();currentController=null;isStreaming=false;}
+    // ⚠️ 必须在 appendUserMessage/chatHistory.push **之前**取快照。
+    // 请求里的 history 语义是"此前的对话", 而本轮提问由服务端显式追加一次;
+    // 若把当前提问也带上, 同一提问会在服务端会话里存两遍, 重开会话时会重复渲染给用户。
+    var priorHistory=chatHistory.slice(-20);
     appendUserMessage(question);chatHistory.push({role:'user',content:question});
     questionInput.value='';autoResize(questionInput);toggleSendBtn();hideEmptyState();
-    startStream(question);
+    startStream(question,priorHistory);
     var sessions=_getSessions(),found=false;
     for(var i=0;i<sessions.length;i++){
       if(sessions[i].session_id===currentSid){sessions[i].title=question.slice(0,60);sessions[i].updated_at=_nowISO();found=true;break;}
@@ -726,7 +607,7 @@ body{ background: var(--bg-deep); }
     _saveSessions(sessions);loadSessions();
   }
 
-  function startStream(question){
+  function startStream(question, priorHistory){
     _streamFull='';_streamDirty=false;_firstDeltaSeen=false;_streamNode=null;_vizMounted=false;
     createStreamingCard(); setPipelineStep('route','active'); updateUIState(true);
     var controller=new AbortController();currentController=controller;isStreaming=true;
@@ -745,7 +626,7 @@ body{ background: var(--bg-deep); }
     }
     fetch(API+'/qa/ask/stream',{
       method:'POST',headers:Object.assign({'Content-Type':'application/json'},RAG.authHeaders()),signal:controller.signal,
-      body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:chatHistory.slice(-20),force_agent:_currentAgent||null})
+      body:JSON.stringify({question:question,top_k:5,temperature:0.3,mode:'hybrid',session_id:RAG.getSessionId(),history:(priorHistory||chatHistory).slice(-20)})
     })
     .then(function(r){
       if(!r.ok)throw new Error('HTTP '+r.status);
@@ -911,13 +792,13 @@ body{ background: var(--bg-deep); }
     // 流式阶段若已挂载检索可视化则保留; 否则兜底挂载(避免 sources 缺失时无面板)
     if(!_vizMounted)mountRetrievalViz(metaInfo,sourcesList,retrievalMeta);
     var latencyHtml=buildLatencyViz(metaInfo&&metaInfo.done);
-    if(metaInfo&&metaInfo.done)window._ragLastDone=metaInfo.done;   // 供指标面板「本轮」展示
     var actionsHtml='<div class="answer-actions" data-answer-id="'+_currentAnsId+'">'+
       '<button class="action-btn" data-copy-answer title="复制答案">'+RAG.icon('copy')+' 复制</button>'+
       '<button class="action-btn" data-regenerate title="重新生成">'+RAG.icon('refresh')+' 重新生成</button></div>';
     // ── 多 Agent 框架卡片: 投诉工单 / 待确认高危操作 ──
     var extrasHtml='';
     var doneInfo=metaInfo&&metaInfo.done;
+    if(doneInfo)mountMemoryNote(doneInfo.memory_meta);   // 超出上下文窗口时如实提示(仅一次)
     if(doneInfo&&doneInfo.ticket){
       var tk=doneInfo.ticket;
       extrasHtml+='<div class="ticket-card'+(tk.escalated?' escalated':'')+'">'+
@@ -1098,187 +979,28 @@ body{ background: var(--bg-deep); }
     } else if(ph){ph.remove();}
   }
 
+  /* ── 上下文超窗提示 ──
+     后端只把最近 20 条消息纳入提示词, 更早的会被挤出窗口。以前这是**静默**发生的:
+     用户只看到模型"忘了前面说过的话", 却得不到任何解释。现在后端在 done 事件里回传
+     memory_meta.dropped, 这里如实告知一次(每条会话只提示一次, 不刷屏)。 */
+  var _memoryNoteShown=false;
+  function mountMemoryNote(meta){
+    if(_memoryNoteShown||!meta)return;
+    var dropped=Number(meta.dropped||0);
+    if(dropped<=0)return;
+    _memoryNoteShown=true;
+    var note=document.createElement('div');
+    note.className='memory-note';
+    note.innerHTML=RAG.icon('alert-triangle')+
+      '<span>更早的 '+dropped+' 条对话已超出上下文窗口，本轮起不再纳入模型输入；'+
+      '完整记录仍保留在会话里，需要时可重新提问。</span>';
+    chatContainer.appendChild(note);
+    scrollToBottom();
+  }
+
   window.askQuestion=askQuestion;window.stopGeneration=stopGeneration;
 
   // 测试钩子: 仅在 perf/harness 显式置位时暴露, 用于驱动真实消息路径做 DOM 裁剪验证
-  // ══════════ 系统指标面板 (①切分策略 ②核心指标 ③单轮耗时 ④降级/异常分布) ══════════
-  // 数据源: ① /api/v1/documents/type-strategies  ②③ /api/v1/metrics/summary
-  //        ④ /api/v1/metrics/history (历史基线, 跨重启)
-  var _metricsOverlay=null,_metricsBody=null,_metricsData=null,_stratData=null;
-
-  function mEsc(s){return RAG.escapeHtml?RAG.escapeHtml(s):String(s==null?'':s);}
-  function mPct(x){return ((Number(x)||0)*100);}
-
-  function initMetricsPanel(){
-    _metricsOverlay=document.getElementById('metricsOverlay');
-    _metricsBody=document.getElementById('metricsBody');
-    if(!_metricsOverlay)return;
-    var openBtn=document.getElementById('metricsOpenBtn');
-    if(openBtn){openBtn.innerHTML=RAG.icon('monitor');openBtn.addEventListener('click',openMetrics);}
-    var closeBtn=document.getElementById('metricsCloseBtn');
-    if(closeBtn){closeBtn.innerHTML=RAG.icon('x');closeBtn.addEventListener('click',closeMetrics);}
-    var refBtn=document.getElementById('metricsRefreshBtn');
-    if(refBtn){refBtn.innerHTML=RAG.icon('refresh');refBtn.addEventListener('click',function(){loadMetrics();});}
-    _metricsOverlay.addEventListener('click',function(e){if(e.target===_metricsOverlay)closeMetrics();});
-    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!_metricsOverlay.hidden)closeMetrics();});
-  }
-  function openMetrics(){if(!_metricsOverlay)return;_metricsOverlay.hidden=false;loadMetrics();}
-  function closeMetrics(){if(_metricsOverlay)_metricsOverlay.hidden=true;}
-
-  async function loadMetrics(){
-    if(!_metricsBody)return;
-    _metricsBody.innerHTML='<div class="metrics-loading">正在加载指标…</div>';
-    var rt=null,hist=null,strat=null,err=null;
-    try{var r=await RAG.apiFetch('/api/v1/metrics/summary');rt=await r.json();}catch(e){err=err||e.message;}
-    try{var h=await RAG.apiFetch('/api/v1/metrics/history');hist=await h.json();}catch(e){err=err||e.message;}
-    try{var s=await RAG.apiFetch('/api/v1/documents/type-strategies');strat=await s.json();}catch(e){err=err||e.message;}
-    if(!rt&&!hist&&!strat){
-      _metricsBody.innerHTML='<div class="metrics-error">指标加载失败: '+mEsc(err||'未知错误')+'</div>';
-      return;
-    }
-    _metricsData={rt:rt,hist:hist};_stratData=strat&&strat.items?strat.items:null;
-    _metricsBody.innerHTML=renderMetrics(rt,hist,_stratData);
-  }
-
-  function renderMetrics(rt,hist,strategies){
-    return renderSectionLatest()+renderSectionCore(rt,hist)+
-           renderSectionDegradation(rt,hist)+renderSectionChunking(rt,strategies);
-  }
-
-  // ③ 本轮耗时与降级 (数据来自最后一次 SSE done 事件)
-  function renderSectionLatest(){
-    var h='<div class="metrics-section"><h3><span class="sec-idx">③</span>本轮耗时与降级</h3>';
-    var d=window._ragLastDone;
-    if(!d){h+='<div class="metrics-empty">本会话尚无已完成的问答 — 先发一条提问即可看到耗时拆解</div>';}
-    else{h+=buildLatencyViz(d);}
-    return h+'</div>';
-  }
-
-  // ② 核心指标 (实时进程内 + 历史基线对照)
-  function renderSectionCore(rt,hist){
-    var h='<div class="metrics-section"><h3><span class="sec-idx">②</span>核心指标</h3>';
-    if(rt&&rt.ok){
-      var req=rt.requests||{},lat=rt.latency_ms||{},q=rt.quality||{},c=rt.cache||{},sys=rt.system||{};
-      h+='<div class="metric-sub">实时（本进程累计，重启清零）</div><div class="metric-cards">';
-      h+=mCard('请求总数',req.total||0,'本进程累计');
-      h+=mCard('成功率',mPct(req.success_rate||0).toFixed(1)+'%','success / total');
-      h+=mCard('P50 延迟',fmtMs(lat.p50_ms),'样本 '+lat.count);
-      h+=mCard('P95 延迟',fmtMs(lat.p95_ms),'样本 '+lat.count);
-      h+=mCard('Top1 分数',(((q.top1_score||{}).avg)||0).toFixed(3),'首条检索相关性');
-      h+=mCard('向量库',sys.vector_store_size||0,'条向量');
-      h+=mCard('Embedding 缓存',mPct(c.embed_hit_rate||0).toFixed(1)+'%',(c.embed_hits||0)+'/'+(c.embed_hits+c.embed_misses||0));
-      h+=mCard('QA 缓存',mPct(c.qa_hit_rate||0).toFixed(1)+'%',(c.qa_hits||0)+'/'+(c.qa_hits+c.qa_misses||0));
-      h+='</div>';
-      var st=rt.stages_ms||{},maxS=0;
-      ['retrieval','rerank','llm'].forEach(function(k){maxS=Math.max(maxS,(st[k]||{}).avg_ms||0);});
-      h+='<div class="metric-sub">阶段平均耗时</div><div class="stage-bars">';
-      ['retrieval','rerank','llm'].forEach(function(k){
-        var v=st[k]||{},w=maxS>0?((v.avg_ms||0)/maxS*100):0;
-        h+='<div class="stage-row"><span class="stage-name">'+k+'</span>'+
-           '<span class="stage-track"><span class="stage-fill" style="width:'+w.toFixed(1)+'%"></span></span>'+
-           '<span class="stage-val">'+fmtMs(v.avg_ms)+' · n='+(v.count||0)+'</span></div>';
-      });
-      h+='</div>';
-    }else{h+='<div class="metrics-empty">实时指标不可用</div>';}
-    if(hist&&hist.available){
-      var hl=hist.latency_ms||{},hd=hist.degradation||{},tk=hist.tokens||{};
-      h+='<div class="metric-sub">历史基线（'+mEsc(hist.source||'')+'，'+hist.cases+' 条，跨重启）</div><div class="metric-cards">';
-      h+=mCard('历史 P50',fmtMs(hl.p50),'有效样本 '+hl.samples);
-      h+=mCard('历史 P95',fmtMs(hl.p95),'有效样本 '+hl.samples);
-      h+=mCard('历史降级率',mPct(hd.degraded_rate||0).toFixed(1)+'%',(hd.degraded||0)+' / '+hd.total);
-      h+=mCard('平均 tokens',tk.avg||0,'总计 '+(tk.total||0));
-      h+='</div>';
-      if(hist.range&&hist.range.from)h+='<div class="metrics-note">统计区间: '+mEsc(hist.range.from)+' → '+mEsc(hist.range.to)+'</div>';
-    }else{
-      h+='<div class="metrics-empty">历史基线不可用'+(hist&&hist.reason?('（'+mEsc(hist.reason)+'）'):'')+'</div>';
-    }
-    return h+'</div>';
-  }
-  function mCard(label,value,sub){
-    return '<div class="metric-card"><div class="mc-label">'+mEsc(label)+'</div>'+
-      '<div class="mc-value">'+mEsc(value)+'</div><div class="mc-sub">'+mEsc(sub||'')+'</div></div>';
-  }
-
-  // ④ 异常与降级兜底 (历史为主 + 实时对照)
-  function renderSectionDegradation(rt,hist){
-    var h='<div class="metrics-section"><h3><span class="sec-idx">④</span>异常与降级兜底</h3>';
-    if(hist&&hist.available&&hist.degradation){
-      var d=hist.degradation,lv=d.levels||{},lb=d.level_labels||{},tot=d.total||0,maxV=0;
-      Object.keys(lv).forEach(function(k){maxV=Math.max(maxV,lv[k]||0);});
-      h+='<div class="metric-sub">降级等级分布（历史 '+tot+' 条）</div><div class="deg-chart">';
-      Object.keys(lv).sort().forEach(function(k){
-        var n=lv[k]||0,w=maxV>0?(n/maxV*100):0;
-        h+='<div class="deg-row"><span class="deg-key">L'+k+'</span>'+
-          '<span class="deg-name">'+mEsc(lb[k]||'')+'</span>'+
-          '<span class="deg-track"><span class="deg-fill deg-l'+k+'" style="width:'+w.toFixed(1)+'%"></span></span>'+
-          '<span class="deg-val">'+n+' <i>('+(tot?(n/tot*100).toFixed(1):0)+'%)</i></span></div>';
-      });
-      h+='</div>';
-      var tr=hist.trend||[];
-      if(tr.length){
-        var maxC=0;tr.forEach(function(t){maxC=Math.max(maxC,t.cases||0);});
-        h+='<div class="metric-sub">按天趋势（柱高=问答量，下方百分比=当日降级率）</div><div class="trend-chart">';
-        tr.forEach(function(t){
-          var bh=maxC>0?((t.cases/maxC)*100):0;
-          h+='<div class="trend-col" title="'+mEsc(t.date)+' · '+t.cases+' 条 · 降级 '+t.degraded+' 条 · 均 '+fmtMs(t.avg_latency_ms)+'">'+
-            '<span class="trend-bar-wrap"><span class="trend-bar" style="height:'+bh.toFixed(1)+'%"></span></span>'+
-            '<span class="trend-date">'+mEsc((t.date||'').slice(5))+'</span>'+
-            '<span class="trend-rate">'+mPct(t.degraded_rate||0).toFixed(0)+'%</span></div>';
-        });
-        h+='</div>';
-      }
-      var rs=(hist.routing||{}).sources||{},rtot=(hist.routing||{}).total||0;
-      if(rtot){
-        h+='<div class="metric-sub">路由来源分布</div><div class="chip-row">';
-        Object.keys(rs).forEach(function(k){
-          h+='<span class="chip">'+mEsc(k)+' <b>'+rs[k]+'</b> <i>'+(rtot?(rs[k]/rtot*100).toFixed(1):0)+'%</i></span>';
-        });
-        h+='</div>';
-      }
-      var dq=hist.data_quality||{};
-      h+='<div class="metrics-note">⚠ 数据口径: '+mEsc(dq.note||'')+
-        ' 零延迟样本 '+dq.zero_latency+' 条、探针请求 '+dq.probe_like+' 条、忠实度缺失 '+
-        dq.faithfulness_missing+' 条 — 均已剔除或单列，不混入均值。</div>';
-    }else{h+='<div class="metrics-empty">历史降级数据不可用</div>';}
-    if(rt&&rt.ok&&rt.degradation){
-      var rd=rt.degradation,rl=rd.levels||{},rdl=rd.level_labels||{},rdt=rd.total||0;
-      h+='<div class="metric-sub">实时降级分布（本进程 '+rdt+' 条）</div><div class="chip-row">';
-      Object.keys(rl).sort().forEach(function(k){
-        h+='<span class="chip deg-l'+k+'">L'+k+' '+mEsc(rdl[k]||'')+' <b>'+rl[k]+'</b></span>';
-      });
-      h+='</div>';
-    }
-    return h+'</div>';
-  }
-
-  // ① 文档类型 × 切分策略
-  function renderSectionChunking(rt,strategies){
-    var h='<div class="metrics-section"><h3><span class="sec-idx">①</span>文档类型 × 切分策略</h3>';
-    if(!strategies||!strategies.length){return h+'<div class="metrics-empty">策略数据不可用</div></div>';}
-    var st=(rt&&rt.chunking&&rt.chunking.by_type)||{};
-    h+='<div class="strat-grid">';
-    strategies.forEach(function(s){
-      var c=s.chunker||{},real=st[s.type_id];
-      h+='<div class="strat-card'+(c.strategy&&c.strategy!=='semantic'?' strat-hl':'')+'">'+
-        '<div class="sc-head"><span class="sc-label">'+mEsc(s.label)+'</span>'+
-        '<span class="sc-type">'+mEsc(s.type_id)+'</span></div>'+
-        '<div class="sc-strategy strat-'+mEsc(c.strategy||'semantic')+'">'+mEsc(c.strategy_label||c.strategy||'')+'</div>'+
-        '<div class="sc-meta">'+
-          '<span>块上限 <b>'+(c.max_chars||0)+'</b> 字</span>'+
-          '<span>重叠 <b>'+(c.overlap||0)+'</b> 字</span>'+
-          '<span>表格感知 <b>'+(s.parse&&s.parse.table?'是':'否')+'</b></span>'+
-          '<span>路由词 <b>'+(s.routing_keywords_count||0)+'</b></span>'+
-        '</div>'+
-        '<div class="sc-why">'+mEsc(c.rationale||'')+'</div>'+
-        (real?('<div class="sc-real">实测: '+real.docs+' 篇 / '+real.chunks+' 块 · 均 '+real.avg_chunk_chars+' 字每块</div>')
-             :'<div class="sc-real muted">本进程暂无切分记录</div>')+
-      '</div>';
-    });
-    h+='</div><div class="metrics-note">策略取自后端单一事实来源 <code>engines/doc_types.py</code>；'+
-       '实测统计来自进程内切分指标（重启清零），未上传文档时为空属正常。</div>';
-    return h+'</div>';
-  }
-
   if(window.__RAG_TEST__){
     window.RAG_TEST={
       appendUserMessage:appendUserMessage,
@@ -1308,68 +1030,6 @@ body{ background: var(--bg-deep); }
   }
 
   document.addEventListener('DOMContentLoaded',init);
-})();
-
-/* ── 科技感背景: 粒子网格 (主题自适应, 性能友好) ── */
-(function(){
-  'use strict';
-  var canvas=document.getElementById('techBg');
-  if(!canvas)return;
-  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  var ctx=canvas.getContext('2d');
-  if(!ctx)return;
-  var nodes=[],W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
-  var N=54,LINK=140;
-
-  function resize(){
-    W=window.innerWidth;H=window.innerHeight;
-    canvas.width=W*DPR;canvas.height=H*DPR;
-    canvas.style.width=W+'px';canvas.style.height=H+'px';
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-  }
-  function spawn(){
-    nodes=[];
-    var n=Math.min(N,Math.max(24,Math.round(W*H/26000)));
-    for(var i=0;i<n;i++){
-      nodes.push({x:Math.random()*W,y:Math.random()*H,
-        vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,
-        r:1+Math.random()*1.6});
-    }
-  }
-  function theme(){
-    try{return RAG.effectiveTheme?RAG.effectiveTheme():'dark';}catch(e){return 'dark';}
-  }
-  function frame(){
-    if(document.hidden){requestAnimationFrame(frame);return;}
-    var dark=theme()==='dark';
-    var nodeFill=dark?'rgba(139,92,246,.55)':'rgba(99,102,241,.45)';
-    var linkBase=dark?'139,92,246':'99,102,241';
-    ctx.clearRect(0,0,W,H);
-    var i,j,a,b,dx,dy,d;
-    for(i=0;i<nodes.length;i++){
-      a=nodes[i];
-      a.x+=a.vx;a.y+=a.vy;
-      if(a.x<0||a.x>W)a.vx*=-1;
-      if(a.y<0||a.y>H)a.vy*=-1;
-    }
-    for(i=0;i<nodes.length;i++){
-      a=nodes[i];
-      for(j=i+1;j<nodes.length;j++){
-        b=nodes[j];
-        dx=a.x-b.x;dy=a.y-b.y;d=Math.sqrt(dx*dx+dy*dy);
-        if(d<LINK){
-          ctx.strokeStyle='rgba('+linkBase+','+(0.14*(1-d/LINK)).toFixed(3)+')';
-          ctx.lineWidth=1;
-          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-        }
-      }
-      ctx.fillStyle=nodeFill;
-      ctx.beginPath();ctx.arc(a.x,a.y,a.r,0,6.2832);ctx.fill();
-    }
-    requestAnimationFrame(frame);
-  }
-  window.addEventListener('resize',function(){resize();spawn();});
-  resize();spawn();requestAnimationFrame(frame);
 })();
 </script>
 </body>

@@ -124,7 +124,10 @@ def get_cache_backend() -> CacheBackend:
             if _backend is None:
                 if settings.shared_state_backend == "redis" and settings.redis_url:
                     try:
-                        backend = RedisBackend(settings.redis_url)
+                        backend = RedisBackend(
+                            settings.redis_url,
+                            key_prefix=getattr(settings, "redis_key_prefix", "rag:") or "rag:",
+                        )
                         backend._r.ping()  # 启动探活: 不可达 → 回退内存, 避免运行期每请求 500
                         _backend = backend
                     except Exception:  # noqa: BLE001 — Redis 不可用/不可达回退内存, 不阻断启动

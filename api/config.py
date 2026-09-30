@@ -238,6 +238,12 @@ class Settings(BaseSettings):
     # QA 缓存走此后端; 限流经 limiter.storage_uri 接入 Redis。Redis 不可用/未配置时回退内存。
     shared_state_backend: str = "memory"
     redis_url: str = ""
+    # Redis 键命名空间。同机可能共存多个应用共用一台 Redis, 各自加前缀避免撞键。
+    redis_key_prefix: str = "rag:"
+
+    # 多轮会话记忆 (session_store) 的存活时长。超时无活动则遗忘该会话的上下文。
+    # 默认 2h: 原 30min 对"暂停查资料再回来追问"的演示/面试场景过短, 上下文会突然消失。
+    session_ttl_s: int = 7200
 
     # 图谱整图 (Redis/文件) 持久化的 HMAC 完整性校验密钥。
     # 多 worker 经 Redis 共享同一份图谱时必须设置 (各进程用同一密钥签名/验签, 否则互不认);

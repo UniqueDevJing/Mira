@@ -193,4 +193,8 @@ class QAResponse(BaseModel):
     memory_used: list[dict] = Field(
         default_factory=list, description="本轮命中的长期记忆条目 (question/answer/score)"
     )
+    memory_meta: dict = Field(
+        default_factory=dict,
+        description="会话上下文元信息: turns_used(本轮注入的历史条数) / dropped(超出上下文窗口被截掉的条数) / recovered(是否由请求历史恢复)",
+    )
     ocr_text: str = Field(default="", description="图片 OCR 识别出的文字 (仅图片提问时非空, 供用户核对识别结果)")

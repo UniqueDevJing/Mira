@@ -218,3 +218,136 @@ def test_cache_hit_still_persists_session(monkeypatch):
     assert r2.get("cache_hit") is True
     assert len(load_session(sid, backend=be)) == 4
     assert load_session(sid, backend=be)[-1].content == "cached-answer"
+
+
+# ───────────────── 回归: 会话丢失后上下文自愈 (线上"追问变成重新回答"的根因) ─────────────────
+
+
+def test_server_session_lost_recovers_from_request_history(patched_session):
+    """服务端会话为空(进程重启 / 超 TTL)时, 请求里的 history 必须被采用, 不能整个丢弃。
+
+    旧实现 `load_session(sid) if sid else history` 只要带了 session_id 就无条件覆盖
+    body.history —— 会话一空, 模型就丢了全部上下文, 表现为「追问时重新回答、不接上一轮」。
+    """
+    import api.core.orchestrator as oc
+
+    sid = "recovery-session"
+    asyncio.run(oc.ask("退款多久到账?", session_id=sid))
+    assert len(load_session(sid)) > 0
+
+    # 模拟服务重启 / 超过 TTL: 服务端会话被清空, 前端仍持有这段对话
+    clear_session(sid)
+    frontend_history = [
+        ChatTurn(role="user", content="退款多久到账?"),
+        ChatTurn(role="assistant", content="1-3 个工作日到账"),
+    ]
+    r = asyncio.run(oc.ask("那银行卡呢?", session_id=sid, history=frontend_history))
+
+    users = [m["content"] for m in patched_session.last_messages if m["role"] == "user"]
+    assert any("退款多久到账" in u for u in users), f"上下文被丢弃, 未回退到请求历史: {users}"
+    # 恢复后回填服务端会话, 后续轮次重新以服务端为准 (否则每轮都要靠前端兜底)
+    assert len(load_session(sid)) >= 3
+    assert r["memory_meta"]["recovered"] is True
+
+
+def test_missing_history_does_not_fabricate_context(patched_session):
+    """反向断言: 会话空且请求也没带历史时, 不得凭空造出上下文。"""
+    import api.core.orchestrator as oc
+
+    sid = "empty-context-session"
+    marker = "上一轮问的ZZTOP"
+    r = asyncio.run(oc.ask("完全无关的新问题", session_id=sid))
+    sent = " ".join(m["content"] for m in patched_session.last_messages)
+    assert marker not in sent, f"不应存在无来源的历史: {sent[:200]}"
+    assert r["memory_meta"]["turns_used"] == 0
+    assert r["memory_meta"]["recovered"] is False
+
+
+def test_truncation_is_reported_not_silent(patched_session):
+    """超出上下文窗口时应如实上报 dropped, 而不是静默截断。"""
+    import api.core.orchestrator as oc
+
+    sid = "truncate-session"
+    long_history = [
+        ChatTurn(role="user" if i % 2 == 0 else "assistant", content=f"历史消息{i}")
+        for i in range(30)
+    ]
+    r = asyncio.run(oc.ask("接着上面继续", session_id=sid, history=long_history))
+    meta = r["memory_meta"]
+    assert meta["turns_used"] == 20, f"注入窗口应为 20 条, 实际 {meta['turns_used']}"
+    assert meta["dropped"] == 10, f"应上报被截掉的 10 条, 实际 {meta['dropped']}"
+    # 累计口径: 再问一轮, dropped 继续累加(6 条新消息把最早的挤出窗口)
+    r2 = asyncio.run(oc.ask("再问一句", session_id=sid))
+    assert r2["memory_meta"]["dropped"] >= 10
+
+
+def test_current_question_in_history_is_not_duplicated(patched_session):
+    """客户端把「本轮提问」也放进 history 时, 会话里不得出现两条同样的提问。
+
+    前端曾在 appendUserMessage 之后才构造请求体, 于是 history 的末条就是本轮提问, 而服务端
+    还会再显式追加一次 → 同一提问在会话里存了两遍, 重新打开会话时重复渲染给用户看。
+    这里把「客户端可能这样发」固定成契约的一部分: 去重由服务端负责。
+    """
+    import api.core.orchestrator as oc
+
+    sid = "dup-session"
+    q = "公司2025年的营业收入是多少？"
+    prior = [
+        ChatTurn(role="user", content="更早的问题"),
+        ChatTurn(role="assistant", content="更早的回答"),
+    ]
+    # 模拟前端行为: history 里已含本轮提问
+    asyncio.run(oc.ask(q, session_id=sid, history=prior + [ChatTurn(role="user", content=q)],
+                       client_history=prior + [ChatTurn(role="user", content=q)]))
+
+    contents = [t.content for t in load_session(sid)]
+    assert contents.count(q) == 1, f"本轮提问重复入库: {contents}"
+    assert contents[0] == "更早的问题", f"转录顺序异常: {contents}"
+
+
+def test_memory_injection_never_persisted(patched_session):
+    """长期记忆注入只进本轮提示词, 绝不能写回会话。
+
+    这不是洁癖: 注入条目形如 "[历史提问] …", 一旦落进会话, 下次打开会话时会被当成**真实
+    对话**渲染出来 —— 实测现象是同一条用户提问在界面上重复出现两遍, 且随轮次继续复制扩散。
+    """
+    import api.core.orchestrator as oc
+
+    sid = "inject-session"
+    injected = [
+        ChatTurn(role="user", content="[历史提问] 上次问过的老问题"),
+        ChatTurn(role="assistant", content="[历史回答] 上次给过的旧答案"),
+    ]
+    # client_history 显式为空: 客户端没有转录, 不得据此回填会话
+    asyncio.run(oc.ask("这轮的新问题", session_id=sid, history=injected, client_history=[]))
+
+    stored = [t.content for t in load_session(sid)]
+    assert not any(c.startswith(("[历史提问]", "[历史回答]")) for c in stored), f"注入条目被写进了会话: {stored}"
+    assert stored and stored[0] == "这轮的新问题", f"会话首条应为真实提问, 实际 {stored[:2]}"
+
+    # 反向: 注入内容仍必须进入本轮提示词(否则长期记忆功能等于被关掉)
+    sent = " ".join(m["content"] for m in patched_session.last_messages)
+    assert "[历史提问]" in sent or "上次问过的老问题" in sent, "注入内容未进入提示词"
+
+
+def test_session_meta_counts_dropped_across_saves():
+    """存储层: dropped 跨多次写入累计, 且不与旧格式冲突。
+
+    契约: 调用方总是传「当前会话内容 + 本轮新消息」, 由存储层负责裁剪与计数;
+    若调用方先把历史裁好再传, 截断信息就丢了 (线上曾因此无法告知用户"更早的对话已超窗口")。
+    """
+    be = _FakeBackend()
+    turns = [ChatTurn(role="user", content=f"t{i}") for i in range(25)]
+    assert save_session("m1", turns, backend=be) == 5
+    assert session_store.session_meta("m1", backend=be) == {"turns": 20, "dropped": 5}
+    # 模拟真实调用方: 已裁剪的会话内容 + 本轮一问一答 → 只应新增 2 条截断
+    grown = load_session("m1", backend=be) + [
+        ChatTurn(role="user", content="u"),
+        ChatTurn(role="assistant", content="a"),
+    ]
+    assert save_session("m1", grown, backend=be) == 7
+    assert session_store.session_meta("m1", backend=be)["dropped"] == 7
+    # 旧格式(裸列表)仍可读, 且被视作未截断
+    be.set("rag:session:legacy", '[{"role":"user","content":"老数据"}]', 60)
+    assert [t.content for t in load_session("legacy", backend=be)] == ["老数据"]
+    assert session_store.session_meta("legacy", backend=be)["dropped"] == 0
