@@ -7,7 +7,8 @@ window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#6366f1">
-<title>Mira 智答 · 基于 RAG 的多模态智能客服系统</title>
+<meta name="description" content="基于 RAG 的可信问答系统：检索增强问答 + 来源引用，出口带不依赖大模型的确定性数值校验护栏">
+<title>基于 RAG 的可信问答系统</title>
 <link rel="icon" href="data:,">
 <script>
 (function(){
@@ -31,7 +32,7 @@ window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(
 /* ── 空状态（居中） ── */
 .empty-state {
   display: none; flex-direction: column; align-items: center; justify-content: flex-start;
-  flex: 1; padding: 24px 24px 16px; gap: 16px; min-height: 200px;
+  flex: 1; padding: 20px 24px 12px; gap: 16px; min-height: 200px;
   overflow-y: auto; min-height: 0;
 }
 .empty-state.show { display: flex; }
@@ -80,12 +81,19 @@ window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(
 .status-upload { background: rgba(99,102,241,.12); color: var(--primary); }
 .kb-empty-msg { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
-/* ── 科技感背景: 渐变图层 + 粒子网格叠加 ── */
-body{
-  background:#080c18 url('/web/assets/tech-bg.jpg') center/cover no-repeat fixed;
+/* ── 科技感背景: 渐变图层 + 粒子网格叠加 ──
+   ⚠️ 这里的规则必须「主题感知」，且图片走相对路径。原先写死
+   url('/web/assets/tech-bg.jpg') + #080c18 有两个问题：
+   ① 子路径部署（/mira/）下该绝对路径 404，背景图整个丢失；
+   ② 深色底与遮罩不受 data-theme 约束，而本 <style> 在 common.css 之后，
+      会覆盖掉亮色主题的浅色渐变 → 亮色模式被蒙上一层黑纱。
+   相对路径以文档 URL 为基准：/mira/ → /mira/web/assets/…；根部署 → /web/assets/…，两者都对。 */
+body{ background: var(--bg-deep); }
+[data-theme="dark"] body{
+  background: var(--bg-deep) url('web/assets/tech-bg.jpg') center/cover no-repeat fixed;
 }
 .tech-bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.75;}
-body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+[data-theme="dark"] body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(8,12,24,.72) 0%,rgba(8,12,24,.55) 40%,rgba(8,12,24,.78) 100%);}
 .app-layout{position:relative;z-index:1;}
 /* 发光卡片质感 */
@@ -117,6 +125,33 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   background:transparent;color:var(--text-1);cursor:pointer;transition:all .2s ease;}
 .try-btn:hover{border-color:var(--primary);color:var(--primary);}
 .brand-center .welcome-subtitle{color:var(--primary);font-weight:500;}
+
+/* ── 首屏「可信交付」条: 把核心差异（来源引用 + 数值校验护栏）讲到页面上 ── */
+.trust-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 14px;
+  max-width:620px;margin:16px auto 0;padding:11px 16px;border-radius:12px;
+  background:var(--bg-card);border:1px solid var(--border-card);box-shadow:var(--shadow-card);}
+.trust-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);line-height:1.4;}
+.trust-item .trust-ico{display:inline-flex;align-items:center;flex:none;}
+.trust-item .icon{width:15px;height:15px;color:var(--ok);}
+.trust-link{font-size:12px;font-weight:600;color:var(--primary);white-space:nowrap;}
+.trust-link:hover{text-decoration:underline;}
+
+/* ── 内联 SVG 图标尺寸（emoji 靠字号撑开，换成 SVG 后需显式给）── */
+.agent-icon{display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:10px;font-size:0;color:var(--primary);
+  background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.18);}
+.agent-icon .icon{width:18px;height:18px;}
+.agent-chip .chip-ico{display:inline-flex;align-items:center;margin-right:4px;vertical-align:-2px;}
+.agent-chip .chip-ico .icon{width:13px;height:13px;}
+/* 侧栏 API Key: 默认折叠, 公开演示下不再把输入框摊在脸上 */
+.key-details{margin-bottom:6px;}
+.key-details summary{font-size:11px;color:var(--text-3);cursor:pointer;list-style:none;
+  padding:2px 0;user-select:none;}
+.key-details summary::-webkit-details-marker{display:none;}
+.key-details summary::before{content:'▸ ';font-size:10px;}
+.key-details[open] summary::before{content:'▾ ';}
+.key-details summary:hover{color:var(--text-2);}
+.key-details .sidebar-key-input{margin-top:6px;}
 
 /* ── Agent 切换条 (常驻输入区上方, 随时可切) ── */
 .agent-bar{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;align-items:center;}
@@ -177,7 +212,10 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
     </div>
 
     <div class="sidebar-footer">
-      <input id="apiKeyInput" class="sidebar-key-input" placeholder="API Key" spellcheck="false">
+      <details class="key-details">
+        <summary>API Key 设置</summary>
+        <input id="apiKeyInput" class="sidebar-key-input" placeholder="留空则按服务端默认权限" spellcheck="false">
+      </details>
       <div class="sidebar-actions">
         <button class="nav-link" id="metricsOpenBtn" title="系统指标（切分策略 / 核心指标 / 降级分布）" aria-label="系统指标"></button>
         <a class="nav-link" href="admin" title="管理后台"><i class="fa fa-cog"></i></a>
@@ -203,22 +241,22 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       </div>
       <div class="agent-grid" id="agentGrid">
         <div class="agent-card" data-agent="consult" title="点击锁定咨询模式">
-          <div class="agent-icon">🔍</div>
+          <div class="agent-icon" data-icon="search"></div>
           <div class="agent-name">咨询 Agent</div>
           <div class="agent-desc">RAG 检索 + 融合重排 + 来源引用</div>
         </div>
         <div class="agent-card" data-agent="operation" title="点击锁定操作模式">
-          <div class="agent-icon">🛠️</div>
+          <div class="agent-icon" data-icon="sliders"></div>
           <div class="agent-name">操作 Agent</div>
           <div class="agent-desc">文档查询 / 高危操作二次确认</div>
         </div>
         <div class="agent-card" data-agent="complaint" title="点击锁定投诉模式">
-          <div class="agent-icon">🎫</div>
+          <div class="agent-icon" data-icon="alert-triangle"></div>
           <div class="agent-name">投诉 Agent</div>
           <div class="agent-desc">情绪识别 + 自动建单 + 升级人工</div>
         </div>
         <div class="agent-card" data-agent="chat" title="点击锁定闲聊模式">
-          <div class="agent-icon">💬</div>
+          <div class="agent-icon" data-icon="message-circle"></div>
           <div class="agent-name">闲聊 Agent</div>
           <div class="agent-desc">跳过检索, 秒级轻量回复</div>
         </div>
@@ -229,16 +267,25 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
         <span class="flow-node">意图分类</span><span class="flow-arrow">→</span>
         <span class="flow-node">Agent 分发</span><span class="flow-arrow">→</span>
         <span class="flow-node">置信度评估</span><span class="flow-arrow">→</span>
-        <span class="flow-node">记忆层</span>
+        <span class="flow-node">记忆层</span><span class="flow-arrow">→</span>
+        <span class="flow-node">出口护栏</span>
+      </div>
+      <div class="trust-strip">
+        <span class="trust-item">
+          <span class="trust-ico" data-icon="shield-check"></span>
+          <span>数值校验护栏：回答里的数字与检索原文强制对账，对不上即拒答</span>
+        </span>
+        <a class="trust-link" href="verify/">查看校验引擎 →</a>
       </div>
       <div class="try-prompts">
         <span class="try-label">试试:</span>
         <button class="try-btn" data-q="七天内可以无理由退款吗">咨询·退款政策</button>
+        <button class="try-btn" data-q="公司2025年的营业收入和净利润分别是多少">财务·年报数据</button>
         <button class="try-btn" data-q="帮我列出文档列表">操作·列文档</button>
         <button class="try-btn" data-q="太差了! 退款拖着不解决, 我要投诉">投诉·建工单</button>
         <button class="try-btn" data-q="你好呀">闲聊·打个招呼</button>
       </div>
-      <p class="upload-hint">从左侧面板上传文档到知识库 · 选📎按钮可传图片提问</p>
+      <p class="upload-hint">从左侧面板上传文档到知识库 · 点相机按钮可传图片提问</p>
     </div>
   </div>
 
@@ -247,15 +294,15 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   <!-- 输入框：固定底部 -->
   <footer id="inputAreaWrap" class="input-area">
     <div class="agent-bar" id="agentBar" title="选择本轮由哪个 Agent 处理 (自动分流=按意图自动判断)">
-      <button class="agent-chip active" data-agent="">⚡ 自动分流</button>
-      <button class="agent-chip" data-agent="consult"><span class="chip-ico">🔍</span>咨询</button>
-      <button class="agent-chip" data-agent="operation"><span class="chip-ico">🛠️</span>操作</button>
-      <button class="agent-chip" data-agent="complaint"><span class="chip-ico">🎫</span>投诉</button>
-      <button class="agent-chip" data-agent="chat"><span class="chip-ico">💬</span>闲聊</button>
+      <button class="agent-chip active" data-agent=""><span class="chip-ico" data-icon="bolt"></span>自动分流</button>
+      <button class="agent-chip" data-agent="consult"><span class="chip-ico" data-icon="search"></span>咨询</button>
+      <button class="agent-chip" data-agent="operation"><span class="chip-ico" data-icon="sliders"></span>操作</button>
+      <button class="agent-chip" data-agent="complaint"><span class="chip-ico" data-icon="alert-triangle"></span>投诉</button>
+      <button class="agent-chip" data-agent="chat"><span class="chip-ico" data-icon="message-circle"></span>闲聊</button>
     </div>
     <div class="input-container" id="inputWrapper">
       <input type="file" id="imageInput" class="hidden" accept="image/png,image/jpeg,image/webp">
-      <button id="imageAskBtn" class="icon-btn image-ask-btn" title="图片提问: 选择图片, OCR 识别后由系统解答">📷</button>
+      <button id="imageAskBtn" class="icon-btn image-ask-btn" data-icon="camera" title="图片提问: 选择图片, OCR 识别后由系统解答" aria-label="图片提问"></button>
       <input type="file" id="fileInput" class="hidden" accept=".pdf,.md,.markdown,.txt,.docx,image/png,image/jpeg,image/webp" multiple>
       <button id="uploadTrigger" class="upload-trigger icon-btn" title="上传文件到知识库"></button>
       <textarea id="questionInput" rows="1" placeholder="基于知识库提问..." autocomplete="off"></textarea>
@@ -304,8 +351,23 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   var sessionList = $('sessionList'), resizeHandle = $('resizeHandle');
   var uploadTrigger = $('uploadTrigger'), fileInput = $('fileInput');
 
+  /* 把静态标记里的 data-icon="name" 渲染成内联 SVG（icons.js 的 RAG.icon）。
+     为什么不直接写 emoji: emoji 的字形与基线高度随平台/字体变化，同一份代码在
+     Windows / macOS / Android 上观感差别很大，且在深色底上偏灰发脏；
+     内联 SVG 用 currentColor 描边，天然跟随主题与字号，观感统一。 */
+  function paintIcons(root){
+    var nodes = (root || document).querySelectorAll('[data-icon]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.getAttribute('data-icon-done') === '1') continue;   // 幂等: 重复调用不重复插
+      el.innerHTML = RAG.icon(el.getAttribute('data-icon'));
+      el.setAttribute('data-icon-done', '1');
+    }
+  }
+
   function init() {
     apiKeyInput.value = localStorage.getItem('rag_api_key') || '';
+    paintIcons(document);
     if (typeof RAG.updateThemeIcon === 'function') RAG.updateThemeIcon();
     loadSessions(); showEmptyState(); setupEvents();
     initMetricsPanel();   // 绑定「系统指标」按钮 / 关闭 / 刷新 / Esc, 否则面板不可达
@@ -610,7 +672,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       reader.onload=function(){
         var base64=String(reader.result||'').split(',')[1]||'';
         var question=questionInput.value.trim()||'请看图片里的内容';
-        appendUserMessage('🖼 [图片] '+question);
+        appendUserMessage('[图片] '+question);
         chatHistory.push({role:'user',content:question});
         questionInput.value='';autoResize(questionInput);toggleSendBtn();hideEmptyState();
         createStreamingCard();setPipelineStep('route','active');updateUIState(true);
@@ -622,7 +684,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
           if(d.ocr_text){
             var note=document.createElement('div');
             note.className='ocr-note';
-            note.textContent='🔍 图片识别文字: '+d.ocr_text.slice(0,120);
+            note.textContent='图片识别文字: '+d.ocr_text.slice(0,120);
             var bodies=chatContainer.querySelectorAll('.answer-text[id$="_text"]');
             if(bodies.length)bodies[bodies.length-1].parentElement.insertBefore(note,bodies[bodies.length-1].parentElement.querySelector('.answer-actions'));
           }
@@ -859,14 +921,14 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
     if(doneInfo&&doneInfo.ticket){
       var tk=doneInfo.ticket;
       extrasHtml+='<div class="ticket-card'+(tk.escalated?' escalated':'')+'">'+
-        '<div class="ticket-title">🎫 投诉工单 '+RAG.escapeHtml(tk.ticket_id)+'</div>'+
+        '<div class="ticket-title">'+RAG.icon('file-text')+' 投诉工单 '+RAG.escapeHtml(tk.ticket_id)+'</div>'+
         '<div class="ticket-meta">状态: '+RAG.escapeHtml(tk.status)+' · 情绪等级: '+RAG.escapeHtml(tk.sentiment)+
         (tk.escalated?' · <b>已升级人工</b>':'')+'</div></div>';
     }
     if(doneInfo&&doneInfo.pending_operation){
       var po=doneInfo.pending_operation;
       extrasHtml+='<div class="ticket-card pending-op" data-pending-id="'+RAG.escapeHtml(po.pending_id)+'">'+
-        '<div class="ticket-title">⚠️ 待确认操作: '+RAG.escapeHtml(po.label)+'</div>'+
+        '<div class="ticket-title">'+RAG.icon('alert-triangle')+' 待确认操作: '+RAG.escapeHtml(po.label)+'</div>'+
         '<div class="ticket-meta">该操作不可撤销, 请谨慎确认。</div>'+
         '<button class="action-btn confirm-op-btn" data-pending-id="'+RAG.escapeHtml(po.pending_id)+'">确认执行</button></div>';
     }

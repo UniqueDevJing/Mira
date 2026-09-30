@@ -141,6 +141,9 @@
   RAG.escapeHtml = escapeHtml;
   RAG.toggleTheme = toggleTheme;
   RAG.updateThemeIcon = updateThemeIcon;
+  // effectiveTheme 必须导出: 粒子背景等按主题取色的调用方依赖它
+  // (曾漏导出 → 调用方 try/catch 兜底成 'dark', 亮色主题下仍画深色粒子)
+  RAG.effectiveTheme = effectiveTheme;
   RAG.getSessionId = getSessionId;
   RAG.resetSessionId = resetSessionId;
   RAG.icon = RAG.icon || function () { return ''; };

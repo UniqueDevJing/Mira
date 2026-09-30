@@ -21,6 +21,7 @@
   stdio 模式:  python demo/mcp_server.py
   HTTP 模式:   由 demo/finance_demo_app.py 在启动时挂载（app.mount("/mcp", ...)）
 """
+import os
 import sys
 from pathlib import Path
 
@@ -29,13 +30,36 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from engines.finance import Source, verify_finance_answer
 from engines.finance.numeric import extract_numbers as _extract_numbers, format_token as _format_token
 
+
+def _allowed_hosts() -> list[str]:
+    """HTTP 传输允许的 Host 列表（防 DNS rebinding）。
+
+    MCP 的 streamable-http 默认开启 Host 校验，而默认白名单为空 ——
+    一旦经反向代理对外暴露，公网域名/IP 不在白名单里就会返回
+    `421 Invalid Host header`（本地直连 :8002 能通是因为 Host 是 127.0.0.1）。
+
+    从环境变量读，避免把部署地址写死在源码里；支持 `host:*` 通配端口写法。
+    """
+    raw = os.getenv(
+        "MIRA_MCP_ALLOWED_HOSTS",
+        # 裸主机名与「带端口」两种写法都要列：校验是按字符串精确匹配（`host:*` 只覆盖带端口的情况）
+        "127.0.0.1,127.0.0.1:*,localhost,localhost:*,114.215.186.113,114.215.186.113:*",
+    )
+    return [h.strip() for h in raw.split(",") if h.strip()]
+
+
 mcp = FastMCP(
     "finance-verifier",
     streamable_http_path="/",   # 挂载到主应用 /mcp 后, 对外端点即 /mcp（避免 /mcp/mcp 双层）
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts(),
+    ),
     instructions=(
         "金融数值校验工具：校验 LLM 回答中的数字是否有来源支撑。"
         "适用场景：你的 Agent 生成含数字断言的回答后，把回答与检索到的原文"
