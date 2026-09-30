@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<script>/* 子路径部署自适应: /mira/ 下 base=/mira, 根部署 base="" */
+window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(i>=0)return p.slice(0,i).replace(/\/+$/,"");return p.replace(/\/(web\/|admin)?[^\/]*$/,"").replace(/\/+$/,"");})();</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#6366f1">
@@ -14,7 +17,7 @@
   } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
 })();
 </script>
-<link rel="stylesheet" href="/web/common.css">
+<link rel="stylesheet" href="web/common.css">
 <style>
 /* ── 主内容区 ── */
 .main-content { display: flex; flex-direction: column; }
@@ -177,7 +180,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       <input id="apiKeyInput" class="sidebar-key-input" placeholder="API Key" spellcheck="false">
       <div class="sidebar-actions">
         <button class="nav-link" id="metricsOpenBtn" title="系统指标（切分策略 / 核心指标 / 降级分布）" aria-label="系统指标"></button>
-        <a class="nav-link" href="/admin" title="管理后台"><i class="fa fa-cog"></i></a>
+        <a class="nav-link" href="admin" title="管理后台"><i class="fa fa-cog"></i></a>
         <button id="themeToggle" class="icon-btn" title="切换主题"></button>
       </div>
     </div>
@@ -279,9 +282,9 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   </div>
 </div>
 
-<script src="/web/common.js"></script>
-<script src="/web/icons.js"></script>
-<script src="/web/markdown.js"></script>
+<script src="web/common.js"></script>
+<script src="web/icons.js"></script>
+<script src="web/markdown.js"></script>
 <script>
 (function(){
   'use strict';

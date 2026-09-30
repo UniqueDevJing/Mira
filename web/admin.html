@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<script>/* 子路径部署自适应: /mira/ 下 base=/mira, 根部署 base="" */
+window.RAG_BASE=(function(){var p=location.pathname;var i=p.indexOf("/web/");if(i>=0)return p.slice(0,i).replace(/\/+$/,"");return p.replace(/\/(web\/|admin)?[^\/]*$/,"").replace(/\/+$/,"");})();</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#6366f1">
@@ -17,7 +20,7 @@
     } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
   })();
 </script>
-<link rel="stylesheet" href="/web/common.css">
+<link rel="stylesheet" href="web/common.css">
 <style>
 /* Admin page override: force light even when system preference is dark */
 @media (prefers-color-scheme: dark) {
@@ -86,9 +89,9 @@
   </div>
 </main>
 
-<script src="/web/common.js"></script>
-<script src="/web/icons.js"></script>
-<script src="/web/markdown.js"></script>
+<script src="web/common.js"></script>
+<script src="web/icons.js"></script>
+<script src="web/markdown.js"></script>
 <script>
 // 依赖: /web/common.js /web/icons.js /web/markdown.js (上方已同步加载)
 // 兜底实现: 公共资源缺失(静态预览/纯静态托管)时页面降级为"可用但明确报错", 而非整页 JS 死亡

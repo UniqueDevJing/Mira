@@ -247,9 +247,10 @@ class VectorStore(VectorStoreInterface):
     def delete_by_doc_id(self, doc_id: str) -> None:
         """按文档 ID 删除向量"""
         try:
-            # 双引号转义: doc_id 含 " 会破坏过滤表达式 (与 get_by_ids 单引号转义对称)
-            escaped = doc_id.replace('"', '""')
-            self.table.delete(f'doc_id = "{escaped}"')
+            # 单引号转义 (SQL 字符串字面量): 新版 LanceDB 按 SQL 标准把双引号解析为**标识符**,
+            # 用 doc_id = "x" 会报 "No field named x"。与 get_by_ids 的转义方式保持一致。
+            escaped = doc_id.replace("'", "''")
+            self.table.delete(f"doc_id = '{escaped}'")
             logger.info("已删除文档 %s 的向量", doc_id)
         except Exception as e:
             logger.error("删除文档 %s 向量失败: %s", doc_id, str(e)[:200])
@@ -266,10 +267,11 @@ class VectorStore(VectorStoreInterface):
         if not doc_id:
             return []
         try:
-            escaped = doc_id.replace('"', '""')
+            # 单引号转义 (同上): 新版 LanceDB 双引号是标识符而非字符串字面量
+            escaped = doc_id.replace("'", "''")
             # 纯过滤查询 (与 get_by_ids 对称): 无向量 search().where() 全表过滤扫描,
             # 避免 ANN 索引下零向量 prefilter 失效; limit 兜底防止超大文档一次性载入内存
-            rows = self.table.search().where(f'doc_id = "{escaped}"').limit(100_000).to_list()
+            rows = self.table.search().where(f"doc_id = '{escaped}'").limit(100_000).to_list()
             out = []
             for r in rows:
                 item = {

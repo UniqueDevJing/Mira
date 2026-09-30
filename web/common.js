@@ -5,7 +5,8 @@
   'use strict';
 
   // ── 基础 ──────────────────────────────────
-  var API = '/api/v1';
+  // 子路径部署自适应: /mira/ 下 → '/mira/api/v1'; 根部署 → '/api/v1'
+  var API = (window.RAG_BASE || '') + '/api/v1';
 
   function authHeaders() {
     var k = localStorage.getItem('rag_api_key') || '';

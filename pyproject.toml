@@ -51,7 +51,8 @@ dev = [
 # 金融校验引擎按 MCP 对外输出所需（demo/mcp_server.py）。
 # 注意：engines/finance 本体零第三方依赖，只有 MCP 传输层需要此包。
 mcp = [
-    "mcp>=1.0.0",
+    # 代码按 mcp 1.x 的 FastMCP API 编写（2.x 已改名 MCPServer），故上限钉在 <2
+    "mcp>=1.0,<2",
 ]
 
 [tool.pytest.ini_options]
