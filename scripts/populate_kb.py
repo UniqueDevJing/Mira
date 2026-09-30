@@ -530,6 +530,50 @@ def main():
     except Exception as e:
         print(f"  [warn] KB 哈希状态写入失败(不影响本次): {e}")
 
+    # ── 文档元数据登记（幂等）────────────────────────────────
+    # 为什么必须补这一步: 上传接口会往 documents 表写元数据, 而本脚本**绕过上传接口**
+    # 直写向量库 + BM25。若不登记, 前端侧栏会显示「知识库文档 0 · 暂无文档」,
+    # 而问答其实检索得到内容 —— 线上实测到的自相矛盾（访客会以为知识库是空的）。
+    # 放在最后统一做, 因此"增量跳过"的那批文档也能被补登记。
+    try:
+        from collections import Counter
+
+        from api.core.document_store import get_document_store
+
+        # 每个 kb 只扫一次表, 统计 doc_id -> 块数（逐篇扫会重复读整表）
+        id_counts: dict[str, Counter] = {}
+        for _kb in sorted({d["kb"] for d in all_docs}):
+            try:
+                ids = (
+                    get_vector_store(_kb)
+                    .table.to_arrow()
+                    .select(["doc_id"])
+                    .column("doc_id")
+                    .to_pylist()
+                )
+                id_counts[_kb] = Counter(ids)
+                print(f"  [{_kb}] 向量库现有 {len(ids)} 块 / {len(id_counts[_kb])} 篇")
+            except Exception as e:  # noqa: BLE001 — 该库不可读不影响其它库登记
+                print(f"  [{_kb}] [warn] 读取向量库失败: {type(e).__name__}: {e}")
+                id_counts[_kb] = Counter()
+
+        store = get_document_store()
+        for doc_data in all_docs:
+            kb = doc_data["kb"]
+            title = doc_data["title"]
+            doc_id = hashlib.sha256(f"{kb}:{title}".encode("utf-8")).hexdigest()[:12]
+            store.save(
+                doc_id=doc_id,
+                filename=title + ".txt",   # 与入库时 uir.source["path"] 保持一致
+                status="ready",
+                chunk_count=id_counts.get(kb, Counter()).get(doc_id) or None,
+                knowledge_base=kb,
+                doc_type=doc_data["doc_type"],
+            )
+        print(f"  已登记文档元数据: {len(all_docs)} 篇")
+    except Exception as e:  # noqa: BLE001 — 元数据登记失败不影响已入库的向量与索引
+        print(f"  [warn] 文档元数据登记失败(不影响检索): {e}")
+
     total_chunks = sum(i["chunks"] for i in uploaded)
     print(f"\nDone: {len(uploaded)} docs (增量跳过 {len(all_docs) - len(uploaded)} 个未变文档), {total_chunks} total chunks")
     print(json.dumps(uploaded, ensure_ascii=False, indent=2))
