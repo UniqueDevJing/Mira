@@ -194,6 +194,13 @@ class Settings(BaseSettings):
     # 语义兜底降级: embed 不可用/异常 → 保守放行(零词重合本身不可靠), 不因护栏故障误伤。
     # 分数下限拒答(low_confidence)始终生效, 不受本开关影响。
     answerability_preguard_enabled: bool = True
+    # ── 金融数值校验护栏（第二道出口防线）──
+    # 与忠实度护栏互补：忠实度判「答案有无检索依据」，这里判「数字是否与来源一致」。
+    # 引擎纯标准库、确定性、零 LLM 成本（engines/finance）；仅对金融/财务意图的问题启用，
+    # 非金融问答行为完全不变。fail → 拒答（附原因）；warn → 放行 + 提示。
+    finance_guard_enabled: bool = True
+    # 来源时效阈值：超过该天数的来源判「过期」（warn 级提示，不拒答）。
+    finance_guard_max_age_days: int = 365
     # low_relevance 的语义下限: 词零重合 且 与上下文最大语义相似度 < 此值 → 判定真无关拒答;
     # ≥ 此值视为语义等价改写(如"钱通常多久到卡上" vs "退款 1-3 工作日到账"), 放行交由生成。
     # 0.50 为 bge-small-zh 评估甜点(改写样本 ≥0.50, 无关样本 ≤0.40, 分界清晰)。

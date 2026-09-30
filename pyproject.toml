@@ -48,6 +48,11 @@ dev = [
     "black>=24.10.0",
     "ruff==0.16.2",
 ]
+# 金融校验引擎按 MCP 对外输出所需（demo/mcp_server.py）。
+# 注意：engines/finance 本体零第三方依赖，只有 MCP 传输层需要此包。
+mcp = [
+    "mcp>=1.0.0",
+]
 
 [tool.pytest.ini_options]
 # 只收集 pytest 风格文件; 旧版手动脚本(test_st.py/test_phase2.py 等)在导入期执行

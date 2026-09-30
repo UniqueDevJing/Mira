@@ -28,6 +28,11 @@ from api.core.degradation import (
     _deg_record_stage_only,
     _deg_reset,
 )
+from api.core.finance_guard import (
+    notice_text as _fin_notice,
+    refusal_text as _fin_refusal,
+    run_finance_guard,
+)
 from api.core.guardrails import (
     _guard_faithfulness,
     _pregeneration_hallucination_guard_async,
@@ -364,6 +369,20 @@ async def _skill_rag(
             refusal_info = build_refusal_info("low_fidelity", docs, question, kb)
         else:
             refusal_info = None
+
+        # ── 金融数值校验护栏（第二道出口防线，纯规则 / 确定性）──
+        # 忠实度护栏判「答案有无依据」；这里判「数字是否与来源一致」。
+        # 只对金融意图问题启用；fail 拒答、warn 附提示、pass 零打扰。
+        if refusal_info is None:
+            _fin = run_finance_guard(question, answer, docs)
+            if _fin is not None:
+                if _fin.verdict == "fail":
+                    logger.warning("[%s] 金融校验护栏触发(fail): %s", kb, _fin.summary[:120])
+                    degradation = _deg_bump(degradation, 3, "finance")
+                    answer = _fin_refusal(_fin)
+                    refusal_info = build_refusal_info("low_fidelity", docs, question, kb)
+                elif _fin.verdict == "warn":
+                    answer = answer + _fin_notice(_fin)
 
     _deg_record_level(degradation)
     retrieval_rounds_hist.observe(retrieval_rounds)
@@ -782,6 +801,21 @@ async def _stream_rag(
         # U1 拒答分级: 流式忠实度拦截, 附候选来源 + 引导追问(前端从 done 事件取 refusal)
         refusal_info = build_refusal_info("low_fidelity", docs, question, routing.kb)
         yield {"type": "delta", "content": warning}
+    elif docs:
+        # ── 金融数值校验护栏（流式，第二道出口防线）──
+        # 答案已流式发出无法撤回：fail 降级为「强提示 + 拒答分级」，warn 附提示。
+        _fin = run_finance_guard(question, answer, docs)
+        if _fin is not None and _fin.verdict != "pass":
+            _kind = "校验未通过" if _fin.verdict == "fail" else "校验提示"
+            _notice = f"\n\n（数值{_kind}：{_fin.summary}）"
+            answer = answer + _notice
+            if _fin.verdict == "fail":
+                logger.warning("[%s] 流式金融校验护栏触发(fail): %s", routing.kb, _fin.summary[:120])
+                degradation = _deg_bump(degradation, 3, "finance")
+                refusal_info = build_refusal_info("low_fidelity", docs, question, routing.kb)
+            else:
+                logger.info("[%s] 流式金融校验护栏提示(warn)", routing.kb)
+            yield {"type": "delta", "content": _notice}
 
     _deg_record_level(degradation)
     retrieval_rounds_hist.observe(retr.get("retrieval_rounds", 1))
