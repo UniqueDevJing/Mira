@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from api.config import settings
 from engines.finance import Source, is_finance_question, verify_finance_answer
@@ -107,7 +107,7 @@ def _as_of_from_doc(doc: dict) -> datetime | None:
     if ts > 1e11:  # 毫秒时间戳
         ts /= 1000.0
     try:
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=UTC)
     except (OverflowError, OSError, ValueError):
         return None
 

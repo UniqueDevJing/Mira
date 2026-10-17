@@ -6,8 +6,6 @@
 
 import time
 
-import pytest
-
 from api.config import settings
 from api.core.finance_guard import (
     docs_to_sources,

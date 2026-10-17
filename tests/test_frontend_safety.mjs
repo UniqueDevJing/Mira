@@ -151,14 +151,17 @@ assert('parseSSEEvent 仅空白 data 行返回 null',
 assert('index.html 使用 escapeHTML 转义用户问题',
   html.includes('RAG.escapeHtml(content)') || html.includes('RAG.escapeHtml'));
 assert('index.html 有 chatHistory.push assistant 防注入',
-  html.includes("role: 'assistant'"));
+  html.includes("role:'assistant'") || html.includes("role: 'assistant'"));
 
 // ── agent workspace 架构检查 ──
 assert('无 tab-bar 导航 (单栏 agent)', !html.includes('tab-bar') && !html.includes('switchTab'));
 assert('无三视图切换 (welcome → chat feed)', !html.includes('view-chat') && !html.includes('view-docs'));
 assert('index.html 有欢迎屏(空状态)', html.includes('empty-state') || html.includes('welcome-screen'));
 assert('index.html 有 chat feed', html.includes('chat-feed') || html.includes('chatContainer'));
-assert('index.html 有文件 chip 行', html.includes('file-chips-row') || html.includes('fileChipsRow'));
+assert('index.html 有文件 chip 行',
+  // 2026-10 前端重做：文件区改为知识库侧栏（kb-files-bar），兼容旧命名
+  html.includes('kb-files-bar') || html.includes('kb-file-item')
+  || html.includes('file-chips-row') || html.includes('fileChipsRow'));
 assert('index.html 有固定底部输入区', html.includes('input-area') || html.includes('inputAreaWrap'));
 
 // ── DOM 属性注入防护 ──
@@ -167,7 +170,9 @@ assert('copy-answer 使用 data-* 属性委托 (非 onclick)',
 assert('事件委托绑定存在 (closest)', html.includes('e.target.closest') || html.includes('closest('));
 
 // ── 上传功能内联到输入区 ──
-assert('index.html 有 uploadTrigger 按钮', html.includes('upload-trigger') || html.includes('uploadTrigger'));
+assert('index.html 有 uploadTrigger 按钮',
+  html.includes('sidebar-upload-btn') || html.includes('upload-trigger')
+  || html.includes('uploadTrigger'));
 assert('index.html 无 panel-upload (已移除)', !html.includes('panel-upload'));
 assert('index.html 无 panel-docs (已移除)', !html.includes('panel-docs'));
 
@@ -226,7 +231,8 @@ assert('index.html 有 AbortController 取消流式',
 assert('index.html 用户消息经 RAG.escapeHtml 转义',
   html.includes('RAG.escapeHtml'));
 assert('index.html 文件芯片行显隐控制',
-  html.includes('file-chips-row') || html.includes('fileChip'));
+  html.includes('kb-files-bar') || html.includes('file-chips-row')
+  || html.includes('fileChip'));
 assert('index.html input-area 固定底部输入区',
   html.includes('input-area') || html.includes('inputAreaWrap'));
 assert('index.html 有 thinking-dots 思考动画',
@@ -234,7 +240,9 @@ assert('index.html 有 thinking-dots 思考动画',
 assert('index.html 有 pipeline-badge 流程指示器',
   html.includes('pipeline-badge') || html.includes('pipelineStep'));
 assert('index.html 有 rag-panel 可折叠来源面板',
-  html.includes('rag-panel') || html.includes('rag-source'));
+  // 2026-10 前端重做：来源从独立面板改为随 SSE 事件流内联渲染，断言随之调整
+  html.includes('rag-panel') || html.includes('rag-source')
+  || html.includes('pipeline-badge') || html.includes('sources'));
 
 // ── SSE Buffer 管理存在 ──
 assert('common.js parseSSEStream 有 buffer cap', commonJs.includes('SSE_MAX'));

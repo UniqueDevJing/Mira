@@ -22,7 +22,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .crosscheck import Source, check_freshness as _check_freshness, cross_check as _cross_check
+from .crosscheck import Source
+from .crosscheck import check_freshness as _check_freshness
+from .crosscheck import cross_check as _cross_check
 from .numeric import (
     NumberToken,
     extract_numbers,

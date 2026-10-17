@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from .numeric import NumberToken, extract_numbers, match_numbers
 
@@ -77,14 +77,14 @@ class Source:
         if v is None:
             return None
         if isinstance(v, datetime):
-            return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+            return v if v.tzinfo else v.replace(tzinfo=UTC)
         if isinstance(v, date):
-            return datetime(v.year, v.month, v.day, tzinfo=timezone.utc)
+            return datetime(v.year, v.month, v.day, tzinfo=UTC)
         if isinstance(v, str):
             for fmt in _FRESHNESS_FORMATS:
                 try:
                     dt = datetime.strptime(v.strip(), fmt)
-                    return dt.replace(tzinfo=timezone.utc)
+                    return dt.replace(tzinfo=UTC)
                 except ValueError:
                     continue
         return None  # 无法解析的格式 → 视同未声明
@@ -274,9 +274,9 @@ def check_freshness(
     now 可注入以便测试；naive 的 now 按 UTC 处理。
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     elif now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
+        now = now.replace(tzinfo=UTC)
 
     findings: list[StaleFinding] = []
     for s in sources:
