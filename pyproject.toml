@@ -69,6 +69,21 @@ markers = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+[tool.ruff.lint]
+# 显式锁定规则集，与 CI 门禁保持一致，避免本地 ruff 版本差异导致漏判。
+# DTZ（flake8-datetimez）拦截 naive datetime 参与时区敏感比较。
+select = ["E4", "E7", "E9", "F", "I", "UP", "DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试文件普遍用 sys.path 注入与延迟导入，E402 属预期写法；
+# 个别断言用分号压缩单行，E702 属刻意的可读性权衡。
+"tests/*" = ["E402", "E701", "E702"]
+# FastAPI 应用装配需在 app 实例化后按配置导入，属依赖顺序而非风格问题
+"api/main.py" = ["E402"]
+"api/core/metrics.py" = ["E402"]
+# DocumentStatus 沿用 (str, Enum) 以保持既有 JSON 序列化行为，
+# 改 StrEnum 属破坏性变更，需连带调整 schema 与前端，故豁免。
+"api/schemas/documents.py" = ["UP042"]
 # 规则集锁定策略: 0.16.2 默认规则集即当前门禁基线 (显式 select=["E7","E9","F","I","RUF"]
 # 会新暴露 584 项历史违规, 需专项清理后再收紧); 行为一致性由 dev 依赖钉死 ruff==0.16.2 保证。
 

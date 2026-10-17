@@ -68,7 +68,7 @@ class Bm25Index:
         None, 由 `_load` → `_check_bm25_consistency` 触发从向量库重建, 避免静默退化成纯向量检索。
         """
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
             logger.warning("BM25 持久化读取失败(将触发从向量库重建): %s", str(e)[:120])

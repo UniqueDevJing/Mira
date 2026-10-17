@@ -83,8 +83,10 @@ class Source:
         if isinstance(v, str):
             for fmt in _FRESHNESS_FORMATS:
                 try:
-                    dt = datetime.strptime(v.strip(), fmt)
-                    return dt.replace(tzinfo=UTC)
+                    # strptime 返回 naive datetime，直接参与时效比较会隐式依赖运行环境
+                    # 的本地时区；这里显式声明输入为 UTC，与下方 replace 语义保持一致。
+                    dt = datetime.strptime(v.strip(), fmt).replace(tzinfo=UTC)
+                    return dt
                 except ValueError:
                     continue
         return None  # 无法解析的格式 → 视同未声明
