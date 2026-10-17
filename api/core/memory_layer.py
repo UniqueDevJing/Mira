@@ -12,6 +12,8 @@ import logging
 import os
 import time
 
+from engines.common.sql_escape import sql_string_literal
+
 logger = logging.getLogger(__name__)
 
 _TABLE = "rag_memory"
@@ -89,10 +91,12 @@ def recall(user_id: str, query: str, top_k: int = 3) -> list[dict]:
         if table is None:
             return []
         vec = get_embedder().embed_query(query[:500])
+        # where 是 SQL 过滤表达式且不支持参数绑定，必须转义：user_id 里的单引号
+        # 会闭合字面量使条件退化为恒真，导致返回其他用户的记忆。
         rows = (
             table.search(vec)
             .metric("cosine")
-            .where(f"user_id = '{user_id[:64]}'")
+            .where(f"user_id = {sql_string_literal(user_id[:64])}")
             .limit(top_k)
             .to_list()
         )

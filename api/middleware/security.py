@@ -26,7 +26,26 @@ BEARER_PREFIX = "Bearer "
 
 
 def _is_exempt(path: str) -> bool:
-    return path in EXEMPT_PATHS or path.startswith(("/docs", "/openapi", "/web"))
+    """判断路径是否免鉴权。
+
+    注意：这里必须用「路径段边界」匹配，不能直接 startswith 裸前缀。
+    裸前缀会把同名开头的业务路径一起豁免，例如
+        startswith("/web")  → /webassets/app.js、/webhook/callback 被误豁免
+        startswith("/docs") → /docs-internal/config 被误豁免
+        startswith("/openapi") → /openapi-secret/keys 被误豁免
+    一旦将来新增以这些前缀命名的业务路由，鉴权会被静默跳过，
+    而中间件是 fail-closed 设计，这个漏洞不会有任何报错提示。
+
+    正确做法：前缀后必须紧跟 `/`（子路径）或恰好相等（该路径本身）。
+    /web/index.html  →豁免（/web 后紧跟 /）
+    /webhooks/cb     → 不豁免（/web 后紧跟 h，不是 /）
+    """
+    if path in EXEMPT_PATHS:
+        return True
+    for prefix in ("/docs", "/openapi", "/web"):
+        if path.startswith(prefix + "/"):
+            return True
+    return False
 
 
 def _is_local_loopback(request: Request) -> bool:

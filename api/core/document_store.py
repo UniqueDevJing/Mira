@@ -223,11 +223,20 @@ class DocumentStore:
             return cursor.rowcount > 0
 
     def purge_old_qa_logs(self, retention_days: int) -> int:
+        """按保留期清理 QA 日志。
+
+        时间格式必须与 SQLite CURRENT_TIMESTAMP 的实际输出对齐：
+        CURRENT_TIMESTAMP 产出 `YYYY-MM-DD HH:MM:SS`（空格分隔、无时区后缀），
+        而 datetime.isoformat() 产出 `YYYY-MM-DDTHH:MM:SS.ffffff+00:00`
+        （T 分隔、带微秒与时区偏移）。两者直接做字符串比较时：
+          · 日期不同 → 结果仍正确（前 10 字符占位决定）
+          · 日期相同 → 空格(0x20) < 'T'(0x54)，当天零点之后的记录会被
+            误判为「早于 cutoff」而提前删除，边界误差可达一整天。
+        故统一用 strftime('%Y-%m-%d %H:%M:%S') 生成与列值同格式的 cutoff。
+        """
         from datetime import datetime, timedelta
 
-        # created_at 为 SQLite CURRENT_TIMESTAMP(UTC) —— 须用 aware UTC 比较;
-        # 原 naive now()(本地时区)在非 UTC 机器上会误删/漏删。
-        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).strftime("%Y-%m-%d %H:%M:%S")
         with self._get_conn() as conn:
             cur = conn.execute("DELETE FROM qa_logs WHERE created_at < ?", (cutoff,))
             return cur.rowcount

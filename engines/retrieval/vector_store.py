@@ -6,6 +6,7 @@ import time
 import lancedb
 from lancedb.index import BTree, IvfHnswFlat
 
+from engines.common.sql_escape import escape_sql_literal, sql_string_list
 from engines.interfaces import VectorStoreInterface
 
 logger = logging.getLogger(__name__)
@@ -214,8 +215,8 @@ class VectorStore(VectorStoreInterface):
         if not ids:
             return []
         try:
-            # 单引号转义 (SQL 字符串字面量), chunk_id 含引号时防过滤表达式破坏
-            id_lit = ", ".join("'" + str(i).replace("'", "''") + "'" for i in ids)
+            # 转义后拼字面量列表 (LanceDB where 不支持参数绑定, 见 engines/common/sql_escape.py)
+            id_lit = sql_string_list(ids)
             # 纯过滤查询: 不依赖向量检索。零向量 + prefilter 在存在 ANN 向量索引时会失效
             # (HNSW 索引下 prefilter 零向量查询返回 0 行), 故改用无向量 search().where() 全表过滤扫描,
             # 标量索引 (parent_id/doc_id) 可加速 where 下推。
@@ -249,7 +250,7 @@ class VectorStore(VectorStoreInterface):
         try:
             # 单引号转义 (SQL 字符串字面量): 新版 LanceDB 按 SQL 标准把双引号解析为**标识符**,
             # 用 doc_id = "x" 会报 "No field named x"。与 get_by_ids 的转义方式保持一致。
-            escaped = doc_id.replace("'", "''")
+            escaped = escape_sql_literal(doc_id)
             self.table.delete(f"doc_id = '{escaped}'")
             logger.info("已删除文档 %s 的向量", doc_id)
         except Exception as e:
@@ -268,7 +269,7 @@ class VectorStore(VectorStoreInterface):
             return []
         try:
             # 单引号转义 (同上): 新版 LanceDB 双引号是标识符而非字符串字面量
-            escaped = doc_id.replace("'", "''")
+            escaped = escape_sql_literal(doc_id)
             # 纯过滤查询 (与 get_by_ids 对称): 无向量 search().where() 全表过滤扫描,
             # 避免 ANN 索引下零向量 prefilter 失效; limit 兜底防止超大文档一次性载入内存
             rows = self.table.search().where(f"doc_id = '{escaped}'").limit(100_000).to_list()
