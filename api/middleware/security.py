@@ -36,11 +36,17 @@ def _is_exempt(path: str) -> bool:
     一旦将来新增以这些前缀命名的业务路由，鉴权会被静默跳过，
     而中间件是 fail-closed 设计，这个漏洞不会有任何报错提示。
 
-    正确做法：前缀后必须紧跟 `/`（子路径）或恰好相等（该路径本身）。
-    /web/index.html  →豁免（/web 后紧跟 /）
-    /webhooks/cb     → 不豁免（/web 后紧跟 h，不是 /）
+    正确做法：路径**完全相等**，或前缀后紧跟 `/`（子路径）：
+        /web/index.html  → 豁免（/web 后紧跟 /）
+        /docs            → 豁免（完全相等；FastAPI 的 Swagger UI 根路径）
+        /openapi.json    → 豁免（完全相等）
+        /webhooks/cb     → 不豁免（/web 后紧跟 h，不是 /）
+        /docs-internal/  → 不豁免
     """
     if path in EXEMPT_PATHS:
+        return True
+    # FastAPI 默认端点：两个根路径本身不是子路径形式，必须单独列出
+    if path in ("/docs", "/openapi.json"):
         return True
     for prefix in ("/docs", "/openapi", "/web"):
         if path.startswith(prefix + "/"):

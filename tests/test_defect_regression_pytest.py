@@ -54,15 +54,12 @@ class TestPurgeCutoffFormat:
         now = datetime.now(UTC)
         fmt = "%Y-%m-%d %H:%M:%S"
 
-        # 10 天前 → 应删；10 分钟前 → 应留；刚好在 cutoff 当天零点 → 修复后应保留
-        three = [
+        rows = [
             ("很旧的问题", (now - timedelta(days=10)).strftime(fmt)),
             ("刚问的", (now - timedelta(minutes=10)).strftime(fmt)),
-            ("cutoff 当天零点", (now - timedelta(days=7)).replace(
-                hour=0, minute=0, second=0).strftime(fmt)),
         ]
         with store._get_conn() as conn:
-            for q, ts in three:
+            for q, ts in rows:
                 conn.execute("INSERT INTO qa_logs (question, created_at) VALUES (?,?)", (q, ts))
 
         deleted = store.purge_old_qa_logs(7)
@@ -72,10 +69,47 @@ class TestPurgeCutoffFormat:
 
         assert "很旧的问题" not in left, "10 天前的日志应被清理"
         assert "刚问的" in left, "10 分钟前的日志必须保留"
-        assert "cutoff 当天零点" in left, (
-            "修复前 isoformat 的 'T' 分隔会把当天零点后的记录误判为过期，修复后应保留"
-        )
         assert deleted == 1, f"应恰好删除 1 条，实际 {deleted}"
+
+    def test_same_date_different_time_respects_second_precision(self, tmp_path):
+        """日期相同时，cutoff 的**时分秒**必须参与比较。
+
+        这是本次修复的核心。修复前 cutoff 形如
+            2026-10-10T11:54:32.789+00:00   （T 分隔、带微秒与时区）
+        而列值形如
+            2026-10-10 09:00:00            （空格分隔）
+        前 10 字符（日期）相同后，比较落到第 11 位：空格(0x20) < 'T'(0x54)，
+        于是当天 09:00 这条**明明早于 cutoff** 却被判为不早于而保留 ——
+        过期数据滞留；反向地，当天 23:00 会被误删。
+        修复后两者同为「空格分隔」，时分秒正常参与字典序比较。
+        """
+        from api.core.document_store import DocumentStore
+
+        store = DocumentStore(str(tmp_path / "docs.db"))
+        now = datetime.now(UTC)
+        cutoff_dt = now - timedelta(days=7)
+
+        # 同为 cutoff 的日期，但一个在 cutoff 之前、一个在之后
+        before = cutoff_dt.replace(hour=0, minute=0, second=0)
+        after = cutoff_dt + timedelta(seconds=1)
+        rows = [
+            ("当天零点", before.strftime("%Y-%m-%d %H:%M:%S")),
+            ("cutoff后1秒", after.strftime("%Y-%m-%d %H:%M:%S")),
+        ]
+        with store._get_conn() as conn:
+            for q, ts in rows:
+                conn.execute("INSERT INTO qa_logs (question, created_at) VALUES (?,?)", (q, ts))
+
+        store.purge_old_qa_logs(7)
+
+        with store._get_conn() as conn:
+            left = {r[0] for r in conn.execute("SELECT question FROM qa_logs").fetchall()}
+
+        assert "当天零点" not in left, "cutoff 当天零点早于 cutoff，应被清理"
+        assert "cutoff后1秒" in left, (
+            "同一日期内晚于 cutoff 的记录必须保留 —— "
+            "修复前因 T 与空格的分隔符差异会被误删"
+        )
 
     def test_retention_zero_keeps_today(self, tmp_path):
         """retention=0 表示只保留今天，今天的日志不应被删。"""
@@ -108,6 +142,21 @@ class TestExemptPathBoundary:
         for p in ["/health", "/", "/metrics", "/web", "/admin",
                   "/web/index.html", "/web/assets/app.js", "/docs", "/openapi.json"]:
             assert _is_exempt(p), f"{p} 应豁免"
+
+    def test_swagger_endpoints_stay_reachable(self):
+        """FastAPI 默认端点必须保持可访问。
+
+        收紧前缀匹配时最容易踩的坑：把 `/docs` 也一起挡掉，
+        Swagger UI 直接 404，但鉴权日志里看不到任何异常 ——
+        属于「安全收紧」引入的功能性回归，必须有用例钉住。
+        """
+        from api.middleware.security import _is_exempt
+
+        # 这两个是「完全相等」而非子路径形式，容易在收紧时被误伤
+        assert _is_exempt("/docs")
+        assert _is_exempt("/openapi.json")
+        # FastAPI 也可能挂载 redoc（若启用）
+        assert not _is_exempt("/docs-internal/x")
 
     def test_prefix_siblings_not_exempt(self):
         """前缀兄弟路径必须走鉴权，这是本次修复的核心。"""
