@@ -21,7 +21,8 @@ import sqlite3
 import time
 import uuid
 
-from api.core.document_store import DEFAULT_DB_PATH
+from api.core import document_store as _doc_store
+from api.core.document_store import DEFAULT_DB_PATH  # noqa: F401  保留向后兼容的导出
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +127,12 @@ def _ensure_tickets_table(conn: sqlite3.Connection) -> None:
 
 
 def create_ticket(content: str, sentiment: str, user_id: str | None = None,
-                  db_path: str = DEFAULT_DB_PATH) -> dict:
+                  db_path: str | None = None) -> dict:
     """投诉建单。高情绪(angry)自动标记升级人工。"""
+    # 运行时解析而非用默认参数绑定：默认参数在导入期求值，会与
+    # conftest 的存储隔离（monkeypatch DEFAULT_DB_PATH）脱钩，
+    # 导致测试写入生产库并报 sqlite3.OperationalError。
+    db_path = db_path or _doc_store.DEFAULT_DB_PATH
     ticket_id = "TK" + uuid.uuid4().hex[:10].upper()
     escalated = 1 if sentiment == SENTIMENT_ANGRY else 0
     status = "escalated" if escalated else "open"
@@ -152,7 +157,9 @@ def create_ticket(content: str, sentiment: str, user_id: str | None = None,
     }
 
 
-def list_tickets(db_path: str = DEFAULT_DB_PATH, limit: int = 50) -> list[dict]:
+def list_tickets(db_path: str | None = None, limit: int = 50) -> list[dict]:
+    # 同 create_ticket：运行时解析 db_path，保持与存储隔离机制一致
+    db_path = db_path or _doc_store.DEFAULT_DB_PATH
     conn = sqlite3.connect(db_path)
     try:
         _ensure_tickets_table(conn)
