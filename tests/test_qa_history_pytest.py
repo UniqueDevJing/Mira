@@ -42,7 +42,8 @@ class TestQuantile:
         assert qh._quantile(vals, 1.0) == 3.0
 
     def test_result_is_rounded_to_two_decimals(self):
-        assert qh._quantile([1.0, 2.0, 2.5], 0.50) == 2.5
+        # 最近秩法：n=3 时 idx = round(0.5*2) = 1 → 取第 2 个元素
+        assert qh._quantile([1.0, 2.0, 2.555], 0.50) == 2.56
 
 
 class TestAvgAndRate:
