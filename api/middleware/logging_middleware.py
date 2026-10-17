@@ -68,7 +68,12 @@ def configure_json_logging() -> None:
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """每个请求分配 trace_id, 结束时记录结构化访问日志 (含 status/latency)。"""
+    """每个请求分配 trace_id, 结束时记录结构化访问日志 (含 status/latency)。
+
+    同时承担**降级指标请求级兜底**: 请求结束时无条件把尚未落盘的降级阶段
+    标记写入 Prometheus。放在这里而不是给每个 Skill 加 try/finally, 是因为
+    本类已是必经出口 (含异常路径), 且对 Skill 零侵入、幂等。
+    """
 
     async def dispatch(self, request, call_next):
         tid = uuid.uuid4().hex[:16]
@@ -83,6 +88,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             status = 500
             raise
         finally:
+            # 降级阶段兜底: Skill 正常路径已由 _deg_record_level flush 过, 这里幂等;
+            # 异常路径 (检索超时 / 上游 5xx / 流式被客户端提前关闭) 才会真正落盘。
+            # 放 finally 而非 try —— 保证异常场景同样记录。
+            try:
+                from api.core.degradation import deg_flush_if_pending
+
+                deg_flush_if_pending()
+            except Exception:  # noqa: BLE001 — 指标写入绝不影响响应
+                logging.getLogger("api.access").debug(
+                    "degradation flush failed", exc_info=True
+                )
             trace_id_ctx.reset(token)
             logging.getLogger("api.access").info(
                 "request",

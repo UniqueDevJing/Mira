@@ -12,6 +12,12 @@ _deg_stages: contextvars.ContextVar = contextvars.ContextVar("deg_stages")
 
 
 def _deg_reset() -> None:
+    """开始一次降级追踪。
+
+    异常路径的兜底不在调用方, 而由 RequestLoggingMiddleware 在请求结束时
+    统一调 `deg_flush_if_pending()` —— 它已是必经出口, 对 Skill 零侵入,
+    且未来新增任何调用降级 API 的路径都自动受保护。
+    """
     _deg_stages.set(set())
 
 
@@ -51,4 +57,26 @@ def _deg_record_level(degradation: int) -> None:
 def _deg_record_stage_only(stage: str) -> None:
     """仅记录某阶段降级 (如直接回答 Skill 的 LLM 失败), 不触碰等级计数。"""
     _deg_mark(stage)
+    _deg_flush()
+
+
+def deg_flush_if_pending() -> None:
+    """请求级兜底：把尚未落盘的降级阶段标记写入指标。
+
+    由中间件在请求结束时无条件调用。相比在每个 Skill 里加 try/finally，
+    请求级兜底有三个优势：
+      1. **零侵入** —— 不需要给四个 Skill（_skill_rag / _stream_rag /
+         _stream_direct / _skill_direct，其中两个是 async 生成器）
+         的上百行函数体加缩进；
+      2. **覆盖面更全** —— 未来新增任何调用降级 API 的路径都自动受保护，
+         不依赖开发者记得写 finally；
+      3. **幂等** —— 正常路径已由 `_deg_record_level` flush 过，
+         这里读到空集合，无重复计数。
+
+    典型漏记场景（此前真实存在）：
+        检索阶段已 `_deg_bump(1, "rerank")`，
+        随后 LLM 调用抛 5xx → 函数栈退出，从未走到 `_deg_record_level`
+        → Prometheus 上 degradation_stage 上一片干净，
+        而线上实际正在降级。可观测性恰好在故障场景失效。
+    """
     _deg_flush()
