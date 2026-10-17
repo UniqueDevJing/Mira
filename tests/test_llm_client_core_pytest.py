@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, ".")
 
-from engines.common.circuit_breaker import CircuitBreakerState  # noqa: E402
+from engines.common.llm_client import CircuitBreakerState  # noqa: E402
 
 from api.core import llm_client as lc  # noqa: E402
 
