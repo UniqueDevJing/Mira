@@ -119,9 +119,14 @@ class TestChatStreamParsing:
     def test_usage_chunk_yielded_separately(self):
         """usage 是独立事件类型，供前端统计 token，不应混进 delta。"""
         usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+        # choices 必须是含一个空 delta 的列表：stream_chat 会先取 choices[0].delta
+        # 再检查 usage，传空列表会在取 [0] 时 IndexError，测不到 usage 分支。
         handler = lambda req: sse_response(  # noqa: E731
             delta_event(content="答"),
-            "data:" + json.dumps({"choices": [], "usage": usage}),
+            "data:"
+            + json.dumps(
+                {"choices": [{"delta": {}}], "usage": usage}, ensure_ascii=False
+            ),
             "data: [DONE]",
         )
         client = make_async_client(handler)

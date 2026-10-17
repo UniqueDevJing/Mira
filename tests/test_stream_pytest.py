@@ -7,6 +7,7 @@
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 import api.core.skills as skills_mod
@@ -115,6 +116,7 @@ def test_json_ask_still_works(monkeypatch):
     assert "degradation_level" in d
 
 
+@pytest.mark.integration
 def test_self_retrieval_flag_passthrough(monkeypatch):
     """enable_self_retrieval=true 端到端可用，返回 retrieval_rounds 字段。"""
     _patch_llm(monkeypatch, FakeLLM())

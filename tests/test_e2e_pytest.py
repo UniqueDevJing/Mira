@@ -58,6 +58,7 @@ def e2e_env(tmp_path, monkeypatch):
 _SAMPLE = "RAG 2.0 的核心模块包括向量检索与图谱检索。混合检索能提升召回率，降低漏答。"
 
 
+@pytest.mark.integration
 def test_e2e_pipeline_direct_and_retrieve(e2e_env):
     """直接驱动真实 pipeline 函数，断言入库后可被混合检索命中。"""
     result = _process_document_pipeline("doc001", "doc.txt", _SAMPLE.encode("utf-8"), "documents")
@@ -71,6 +72,7 @@ def test_e2e_pipeline_direct_and_retrieve(e2e_env):
     assert any("混合检索" in c or "图谱检索" in c for c in contents), f"检索未命中预期内容: {contents}"
 
 
+@pytest.mark.integration
 def test_e2e_http_upload_then_retrieve(e2e_env):
     """经 FastAPI 路由走完整 HTTP 链路：上传 -> 后台处理 -> 状态就绪 -> 检索命中。"""
     from fastapi.testclient import TestClient

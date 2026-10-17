@@ -42,8 +42,11 @@ class TestQuantile:
         assert qh._quantile(vals, 1.0) == 3.0
 
     def test_result_is_rounded_to_two_decimals(self):
-        # 最近秩法：n=3 时 idx = round(0.5*2) = 1 → 取第 2 个元素
-        assert qh._quantile([1.0, 2.0, 2.555], 0.50) == 2.56
+        # 最近秩法 n>1 时 idx 由 q 决定，取位与舍入混在一起难以单独验证 round。
+        # 用 n=1（idx 恒为 0）构造只检验舍入的用例。
+        assert qh._quantile([2.555], 0.50) == 2.56   # 第三位 5 向上进位
+        assert qh._quantile([3.14159], 0.10) == 3.14  # 截断到两位
+        assert qh._quantile([2.567], 0.90) == 2.57
 
 
 class TestAvgAndRate:
