@@ -64,3 +64,17 @@ htmlcov/
 # 运行时持久化产物（BM25/图谱 pkl、SQLite 已由 *.db 覆盖）
 data/*.pkl
 
+# ---- 仓库卫生（2026-10-17 补充）----
+# 测试运行的临时产物（含 Windows 路径/失败堆栈，不应入库）
+*_ce.txt
+other_fail.txt
+fail_*.txt
+stderr_*.txt
+stdout_*.txt
+# LanceDB 向量索引与备份（可由语料重建，见 scripts/seed_kb*.py）
+lancedb_data_backup/
+lancedb_data_backup_*/
+*.lance/
+*.lance/
+# 根目录散落的临时报告应放 docs/reports/
+/rag-*.md
