@@ -27,12 +27,18 @@ jobs:
       - name: Lint (ruff, blocking)
         run: ruff check api engines tests
 
-      - name: Run tests (with coverage gate)
+      - name: Run tests (with overall coverage gate 70%)
+        # 覆盖率门禁分两层：整体 70%（含边缘胶水层），核心层 80%（见下一步骤）。
         # 跳过需真实模型/网络的 slow/integration 测试；--cov-fail-under=80 低于 80% 即失败
         env:
           HF_ENDPOINT: "https://hf-mirror.com"
           RAG_API_KEY_ENABLED: "false"
         run: make test-ci
+
+      - name: Core-layer coverage gate (api/core ≥ 80%)
+        # 复用上一步pytest 产出的 .coverage 数据，不重跑测试。
+        # 分层理由见 Makefile 中 coverage-core-gate 目标的注释。
+        run: make coverage-core-gate
 
       - name: Routing regression gate
         # 纯规则确定性门禁: 固定黄金路由题, 断言 gold_kb ∈ 候选集; 不调 LLM/服务, 秒级完成

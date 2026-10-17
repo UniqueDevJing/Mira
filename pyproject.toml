@@ -94,5 +94,9 @@ source = ["api", "engines"]
 omit = ["*/tests/*"]
 
 [tool.coverage.report]
-fail_under = 80
+# 整体门禁 70%：覆盖路由层/ 文档解析层/ 分块层等以胶水逻辑为主的边缘模块。
+# 核心逻辑（检索、护栏、缓存、编排、会话、指标）由 coverage-core-gate 单独守 80%，
+# 见 Makefile 中该目标的注释。
+fail_under = 70
 show_missing = true
+skip_empty = true
