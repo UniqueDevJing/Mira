@@ -24,7 +24,7 @@ def _deg_reset() -> None:
 def _deg_bump(degradation: int, level: int, stage: str) -> int:
     """升级降级等级并记录发生阶段 (供 stage 维度指标)。"""
     degradation = max(degradation, level)
-    s = _deg_stages.get()
+    s = _deg_stages.get(None)
     if s is None:
         s = set()
         _deg_stages.set(s)
@@ -33,7 +33,7 @@ def _deg_bump(degradation: int, level: int, stage: str) -> int:
 
 
 def _deg_mark(stage: str) -> None:
-    s = _deg_stages.get()
+    s = _deg_stages.get(None)
     if s is None:
         s = set()
         _deg_stages.set(s)
@@ -41,7 +41,7 @@ def _deg_mark(stage: str) -> None:
 
 
 def _deg_flush() -> None:
-    s = _deg_stages.get()
+    s = _deg_stages.get(None)
     if s:
         for stage in s:
             track_degradation_stage.labels(stage=stage).inc()
