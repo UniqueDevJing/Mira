@@ -114,6 +114,11 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 # 前端: http://127.0.0.1:8000/web/
 ```
 
+> ⚠️ **安全部署须知 (S5)**：公网/生产部署时 `RAG_API_KEY_ENABLED=true` **必须开启**，且 `RAG_API_KEY` 须为强随机值（生成：`python -c "import secrets;print(secrets.token_urlsafe(32))"`）。
+> - 若未启用鉴权：公网接口会被匿名访问——代码层已把匿名主体降级为「非 admin、无权访问知识库」，但数据接口仍可读，**不可作为已防护**。
+> - 若绑定 `0.0.0.0` 且未启用：中间件直接拒绝公网请求（fail-closed）。
+> - **经 nginx 等反代部署时，务必在反代配置加 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`**，否则公网请求会被误判为本机直连（host=127.0.0.1）而绕过鉴权——这是 S5 漏洞的根因。
+
 ## API 示例
 
 ```bash

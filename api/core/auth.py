@@ -29,11 +29,14 @@ class Principal:
 
     key_id: str  # API Key 原文或 "loopback"/"anonymous"
     name: str
-    role: str  # "admin" | "reader"
+    role: str  # "admin" | "reader" | "anonymous"
     allowed_kbs: list[str] | None  # None=全部; []=无; [...] = 受限子集
+    authenticated: bool = True  # 是否经由有效 API Key 认证 (False=匿名/未认证)
 
     def is_admin(self) -> bool:
-        return self.role == ADMIN or self.allowed_kbs is None
+        # 仅「已认证的 admin」才算管理员; 匿名主体 (authenticated=False) 即使 allowed_kbs=None 也非 admin。
+        # 这是 S5 安全修复的核心: 杜绝「鉴权未启用时公网匿名 = 管理员」。
+        return self.authenticated and self.role == ADMIN
 
     def can_access_kb(self, kb: str) -> bool:
         if self.allowed_kbs is None:
@@ -102,7 +105,17 @@ def loopback_principal() -> Principal:
 
 
 def anonymous_admin() -> Principal:
-    return Principal(key_id="anonymous", name="anonymous", role=ADMIN, allowed_kbs=None)
+    """未认证 / 豁免路径的匿名主体 (S5 安全修复)。
+
+    安全要点:
+      - authenticated=False  →  is_admin() 恒为 False, 彻底消除「匿名 = 管理员」漏洞
+        (旧实现 role=ADMIN, 导致 GET /api/v1/auth/me 返回 is_admin=true, 任何人都成管理员)。
+      - allowed_kbs=None  →  鉴权未启用时仍可读取全部知识库, 保持 demo 可演示;
+        一旦启用鉴权 (RAG_API_KEY_ENABLED=true), 无 Key 的请求会被中间件直接 401/403,
+        不会到达路由, 此主体的可读范围不再有意义。
+    真正的内部 admin 由 loopback_principal() (本机直连) 或 authenticate() (有效 Key) 提供。
+    """
+    return Principal(key_id="anonymous", name="anonymous", role="anonymous", allowed_kbs=None, authenticated=False)
 
 
 def get_principal(request: Request) -> Principal:

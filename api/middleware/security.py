@@ -55,20 +55,22 @@ def _is_exempt(path: str) -> bool:
 
 
 def _is_local_loopback(request: Request) -> bool:
-    """本机直连 (127.0.0.1) 免鉴权 — 显式开关 (RAG_LOOPBACK_EXEMPT), 生产默认关 (S4)。
+    """判定「本机直连」(开发/运维放行): host 必须是 loopback 且**不能带反向代理转发头**。
 
-    安全背景: 部署在 nginx/Caddy 等反向代理后, 若代理未设转发头 (proxy_pass 默认不带 XFF),
-    所有外部请求会被当成 loopback 直连 → 全 API 匿名 admin 绕过 (含 DELETE 端点)。
-    因此 loopback 豁免必须显式开启; 且即便开启, 带 Cf-Connecting-Ip / X-Forwarded-For 头的
-    请求仍视为外部 (隧道/代理转发场景), 不豁免。
+    安全背景 (S5 漏洞根因): 部署在 nginx/Caddy/cloudflared 后, 反向代理把公网请求转发到
+    127.0.0.1, 若仅按 host 判断会被伪装成内部, 导致未启用鉴权时公网请求获得 admin。
+    因此「带 X-Forwarded-For / Cf-Connecting-Ip / X-Real-IP 即视为外部」**无条件生效**,
+    不依赖 RAG_LOOPBACK_EXEMPT 开关 —— 即便本机直连豁免, 经代理转发的请求也一律走鉴权分支。
     """
-    from api.config import settings
-
-    if not settings.loopback_exempt:
-        return False
     host = request.client.host if request.client else ""
-    has_forward_header = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
-    return host in ("127.0.0.1", "::1", "localhost") and not has_forward_header
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        return False
+    has_forward_header = bool(
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("x-forwarded-for")
+        or request.headers.get("x-real-ip")
+    )
+    return not has_forward_header
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
