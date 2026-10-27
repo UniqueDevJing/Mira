@@ -83,6 +83,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             status = response.status_code
+            # 把 trace_id 回写响应头, 客户端/网关可按 X-Trace-Id 关联本次请求的全部日志
+            response.headers["X-Trace-Id"] = tid
             return response
         except Exception:
             status = 500
