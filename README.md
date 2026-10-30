@@ -1,13 +1,47 @@
-# Mira · 基于 RAG 的多模态智能客服问答系统
+# Mira · 生产级 RAG 多模态智能客服问答系统
+
+> **意图路由 Agent 分流（咨询 / 操作 / 投诉 / 闲聊）· 多模态图片理解（qwen-vl）· 混合检索（向量 + BM25/RRF 融合 + 重排序）· GraphRAG 关系推理 · 置信度护栏 · 会话与长期记忆 · 4 级降级**
+>
+> *A production-grade RAG agent for enterprise customer service — multi-agent intent routing, multimodal understanding, hybrid retrieval, and a deterministic finance-numerics guardrail.*
 
 ![Tests](https://img.shields.io/badge/tests-534%20passed-10b981)
 ![Python](https://img.shields.io/badge/python-3.12%2B-4f6ef7)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Code style](https://img.shields.io/badge/lint-ruff%200.16.2-26b5ce)
 
-> 意图路由 Agent 分流（咨询 / 操作 / 投诉 / 闲聊）· 多模态图片理解（qwen-vl）· 混合检索（向量 + BM25/RRF 融合 + 重排序）· GraphRAG 关系推理 · 置信度护栏 · 会话与长期记忆 · 4 级降级
-
 一个面向企业客服场景的**生产级 RAG 智能体系统**：用户消息经意图分类后分发至专职 Agent，咨询类问题走混合检索增强生成链路，图片输入由视觉大模型结合知识库综合作答，投诉自动建单升级，高危操作强制二次确认。
+
+---
+
+## 目录
+
+- [为什么值得看](#为什么值得看)
+- [核心特性](#核心特性)
+- [出口校验：金融数值校验护栏](#出口校验金融数值校验护栏)
+- [质量门禁与评测基线](#质量门禁与评测基线)
+- [架构](#架构)
+- [快速开始](#快速开始)
+- [API 示例](#api-示例)
+- [项目结构](#项目结构)
+- [License](#license)
+
+---
+
+## 为什么值得看
+
+RAG 的通用风险是"答非所问"，但**金融客服的典型故障是数字被改写**——`1.2 亿元` 写成 `1.2 万元`、把"营收"说成"利润"、拿去年数当今年报。这类错误词重合度很高，普通的忠实度护栏（统计口径）抓不到。
+
+Mira 在 RAG 出口额外挂了一道**纯规则、确定性、零 LLM 成本**的数值对账护栏，把"数字被悄悄改掉"这种最危险的故障单独防住。整套系统不是 demo：534 个用例全绿、生产对齐召回 Recall@10 = 1.00、四层可复跑门禁接入 CI。
+
+**核心亮点（可验证）**：
+
+| 指标 | 数值 |
+|---|---|
+| 测试套件 | **534 passed / 0 failed** |
+| 生产对齐召回 Recall@10（n=80，10 知识库） | **1.00** |
+| Recall@1 / Recall@3 / MRR | 0.71 / 0.91 / 0.82 |
+| 金融数值对抗门禁 | 硬攻击拦截 29/29 = 100% ｜ 严格正常样本误拒 0/6 = 0% ｜ 整体命中 44/51 = 86.27% |
+| 意图路由 | 规则分类，零延迟；四路专职 Agent |
 
 ---
 
@@ -31,6 +65,8 @@
 **记忆层**— 短期：会话滑动窗口；长期：用户历史向量存储（按用户隔离，答后异步写入，问前召回注入上下文）。
 
 **可观测与降级**— 分阶段延迟拆解、QA 质量近似指标（faithfulness/confidence）、LLM 熔断器、4 级降级（跳重排 → 仅 BM25 → LLM 兜底）；每个请求分配 `trace_id` 并回写响应头 `X-Trace-Id`，全链路日志（含被拒请求）可按 `trace_id` 串联，后端接入 Loki/ELK 即可做链路追踪。
+
+---
 
 ## 出口校验：金融数值校验护栏
 
@@ -59,6 +95,8 @@ python scripts/eval_finance_adversarial.py
 # （7 条未命中为 pass→warn 的保守提示，集中在「正确聚合」「分部数据」，非误拒）
 ```
 
+---
+
 ## 质量门禁与评测基线
 
 | 指标 | 数值 |
@@ -72,6 +110,8 @@ python scripts/eval_finance_adversarial.py
 四层可复跑门禁：`make test-ci`（覆盖率 ≥80%）· `make eval-routing`（黄金路由题）· `make eval-gate`（390 问召回基线比对）· `make eval-kb`（KB 级生产对齐评测）。
 
  **完整评测报告**（检索召回 / 路由准确率 / 幻觉率 / 误拒率 / 复现命令）见 [docs/EVALUATION.md](docs/EVALUATION.md)。
+
+---
 
 ## 架构
 
@@ -91,6 +131,8 @@ flowchart TD
     I --> J[(长期记忆层<br/>rag_memory 向量表)]
     J -.召回注入.-> D
 ```
+
+---
 
 ## 快速开始
 
@@ -119,6 +161,8 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 > - 若绑定 `0.0.0.0` 且未启用：中间件直接拒绝公网请求（fail-closed）。
 > - **经 nginx 等反代部署时，务必在反代配置加 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`**，否则公网请求会被误判为本机直连（host=127.0.0.1）而绕过鉴权——这是 S5 漏洞的根因。
 
+---
+
 ## API 示例
 
 ```bash
@@ -138,6 +182,8 @@ curl -X POST http://127.0.0.1:8000/api/v1/qa/ask \
        "confirm_operation": true, "pending_operation_id": "OP..."}'
 ```
 
+---
+
 ## 项目结构
 
 ```
@@ -148,6 +194,8 @@ scripts/        评测(gate/routing/kb) · 守护启动 · 入库 · 闭环探�
 tests/          534 用例 · PDF fixtures · 评测回归
 .github/        CI (test-ci + eval-routing + recall-gate)
 ```
+
+---
 
 ## License
 
