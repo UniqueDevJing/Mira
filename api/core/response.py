@@ -118,7 +118,8 @@ def public_sources(docs: list[dict]) -> list[dict]:
     不应随 SSE/HTTP 响应外发 (payload 冗余 + 暴露内部实现细节)。
     浅拷贝逐条剔除, 不改动原 dict (原列表在流式链路后续仍会被护栏使用)。
     """
-    return [{k: v for k, v in d.items() if k != "context_full"} for d in docs]
+    _INTERNAL_FIELDS = {"context_full", "truncated"}
+    return [{k: v for k, v in d.items() if k not in _INTERNAL_FIELDS} for d in docs]
 
 
 def build_sources_event(

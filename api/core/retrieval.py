@@ -498,7 +498,9 @@ def _build_context(docs: list, top_k: int = 5) -> tuple[str, list]:
     sources = []
     for i, (did, g) in enumerate(groups.items()):
         chain = " > ".join(g["title_chain"]) if g["title_chain"] else g["doc_title"]
-        content = "\n\n".join(g["chunks"])[:800]
+        raw = "\n\n".join(g["chunks"])
+        content = raw[:800]
+        truncated = len(raw) > 800
         label = f"[来源{i + 1}] {chain}" if chain else f"[来源{i + 1}]"
         parts.append(f"{label}\n【片段开始】\n{content}\n【片段结束】")
         sources.append({
@@ -512,6 +514,9 @@ def _build_context(docs: list, top_k: int = 5) -> tuple[str, list]:
             # 拿 200 字显示片段判忠实度, 会把"LLM 见过但片段没展示的内容"误判为无依据,
             # 触发误拒答。API 路由按 SourceDocument 显式构造响应, 此内部字段不会外泄。
             "context_full": content,
+            # 该来源片段是否因 800 字上限被截断(M1 错误账本用: 标记"上下文被截"类 badcase)。
+            # 内部字段, 由 response.public_sources 与 context_full 一同剥离, 不外泄。
+            "truncated": truncated,
             "source_file": g["source_file"],
             "score": g["score"],
         })

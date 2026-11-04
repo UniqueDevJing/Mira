@@ -206,6 +206,15 @@ class Settings(BaseSettings):
     # 0.50 为 bge-small-zh 评估甜点(改写样本 ≥0.50, 无关样本 ≤0.40, 分界清晰)。
     low_relevance_min_sim: float = 0.50
 
+    # ── M1 错误账本 + 幻觉归因 ──
+    # 把 badcase 自动归类(未召回/排序低/上下文截断/数字改写/误拒), 写入 JSONL 账本 + Prometheus。
+    m1_enabled: bool = True
+    m1_low_rank_threshold: float = 0.60          # top1 低于此值且未拒答 → 召回但排序低
+    m1_false_refusal_top1_gate: float = 0.70     # 拒答但 top1 ≥ 此值 → 疑似误拒
+    m1_false_refusal_overlap_gate: float = 0.15  # 拒答但问答词面重合 ≥ 此值 → 疑似误拒
+    m1_ledger_path: str = ""                      # JSONL 账本路径(空=仅内存, 不落盘)
+    m1_max_buffer: int = 2000                     # 进程内环形缓冲条数
+
     # P1' 选择性扇出 + early-exit: 解决单库路由错误导致的端到端召回丢失
     # (路由准确率 79% → 端到端召回 75%→90%+ 的唯一最大杠杆)。
     # 机制: 主候选置信度 < route_early_exit 视为模糊, 对 top route_fanout_top_n 候选 KB 扇出检索并合并;

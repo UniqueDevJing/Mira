@@ -41,6 +41,7 @@ from api.core.guardrails import (
     _guard_faithfulness,
     _pregeneration_hallucination_guard_async,
 )
+from api.core.error_ledger import record_from_rag
 from api.core.llm_client import (
     CircuitBreakerOpenError,
     LLMClient,
@@ -426,7 +427,14 @@ async def _skill_rag(
             refusal=refusal_info,
         )
 
+    record_from_rag(
+        question, kb, docs=docs, top1_score=top1_score, answer=answer,
+        refusal_reason=pre_reason, finance_verdict=None,
+        truncated=any(d.get("truncated") for d in docs),
+    )
+
     answer, token_usage, llm_ms, llm_ok = await _generate(question, context, llm, start, temperature, history, kb=kb)
+    finance_verdict = None
     track_llm_latency.observe(llm_ms / 1000)
     if not llm_ok:
         degradation = _deg_bump(degradation, 3, "llm")
@@ -458,6 +466,7 @@ async def _skill_rag(
         if refusal_info is None:
             _fin = run_finance_guard(question, answer, docs)
             if _fin is not None:
+                finance_verdict = _fin.verdict
                 if _fin.verdict == "fail":
                     logger.warning("[%s] 金融校验护栏触发(fail): %s", kb, _fin.summary[:120])
                     degradation = _deg_bump(degradation, 3, "finance")
@@ -469,6 +478,13 @@ async def _skill_rag(
     _deg_record_level(degradation)
     retrieval_rounds_hist.observe(retrieval_rounds)
     retrieved_docs_count.observe(len(docs))
+
+    record_from_rag(
+        question, kb, docs=docs, top1_score=top1_score, answer=answer,
+        refusal_reason=refusal_info["reason"] if refusal_info else None,
+        finance_verdict=finance_verdict,
+        truncated=any(d.get("truncated") for d in docs),
+    )
 
     return build_qa_result(
         answer=answer,
@@ -835,6 +851,11 @@ async def _stream_rag(
         # U1 拒答分级: 流式首个拒答原因, 附候选来源 + 引导追问
         refusal_info = build_refusal_info(pre_reason, docs, question, routing.kb)
         _deg_record_level(degradation)
+        record_from_rag(
+            question, routing.kb, docs=docs, top1_score=top1_score, answer=refusal,
+            refusal_reason=pre_reason, finance_verdict=None,
+            truncated=any(d.get("truncated") for d in docs),
+        )
         yield {"type": "delta", "content": refusal}
         yield build_done_event(
             answer=refusal,
@@ -865,6 +886,7 @@ async def _stream_rag(
         yield {"type": "delta", "content": delta}
     answer, token_usage, llm_ok, llm_ms = r["answer"], r["token_usage"], r["ok"], r["llm_ms"]
 
+    finance_verdict = None
     refusal_info = None
     if not llm_ok:
         degradation = _deg_bump(degradation, 3, "llm")
@@ -893,6 +915,7 @@ async def _stream_rag(
         # ── 金融数值校验护栏（流式，第二道出口防线）──
         # 答案已流式发出无法撤回：fail 降级为「强提示 + 拒答分级」，warn 附提示。
         _fin = run_finance_guard(question, answer, docs)
+        finance_verdict = _fin.verdict if _fin else None
         if _fin is not None and _fin.verdict != "pass":
             _kind = "校验未通过" if _fin.verdict == "fail" else "校验提示"
             _notice = f"\n\n（数值{_kind}：{_fin.summary}）"
@@ -909,6 +932,12 @@ async def _stream_rag(
     retrieval_rounds_hist.observe(retr.get("retrieval_rounds", 1))
     retrieved_docs_count.observe(len(docs))
 
+    record_from_rag(
+        question, routing.kb, docs=docs, top1_score=top1_score, answer=answer,
+        refusal_reason=refusal_info["reason"] if refusal_info else None,
+        finance_verdict=finance_verdict,
+        truncated=any(d.get("truncated") for d in docs),
+    )
     yield build_done_event(
         answer=answer,
         docs=docs,
