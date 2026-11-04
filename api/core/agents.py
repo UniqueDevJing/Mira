@@ -203,6 +203,109 @@ def _match_operation(text: str) -> dict | None:
     return None
 
 
+_OP_TOOLS_SPEC = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["op"],
+            "description": f"{t['label']}。{t['hint']}",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doc_id": {
+                        "type": "string",
+                        "description": "目标文档 ID (16 位 hex) 或文件名; list_documents 不需要",
+                    },
+                },
+                "required": [],
+            },
+        },
+    }
+    for t in _OPERATION_TOOLS
+]
+
+_OP_ROUTING_SYSTEM = (
+    "你是操作指令路由器。根据用户消息从可用工具中选出最匹配的一个并调用它；"
+    "用户消息里若包含文档 ID (16 位 hex) 或明确的文件名，放进 doc_id 参数。"
+    "没有匹配的工具就不要调用任何工具。不要编造文档 ID。"
+)
+
+_ROUTER_TIPS = "、".join(t["label"] for t in _OPERATION_TOOLS)
+
+
+def _llm_router_client():
+    """操作路由的 LLM 客户端（懒构造，失败返回 None → 调用方保持原提示话术）。"""
+    try:
+        from api.config import settings
+        from engines.common.llm_client import SyncLLMClient
+
+        if not settings.llm_api_key:
+            return None
+        return SyncLLMClient(
+            base_url=settings.llm_base_url,
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+        )
+    except Exception:  # noqa: BLE001 — 兜底路由不可用不影响主流程
+        return None
+
+
+_ROUTER_CLIENT_LOCK = __import__("threading").Lock()
+_ROUTER_CLIENT_CACHE: list = []
+
+
+def _route_operation_via_llm(text: str) -> dict | None:
+    """M-A 兜底路由: 规则未命中时用 function calling 让模型选工具。
+
+    安全边界（与规则路径完全一致）:
+    - 工具白名单由 _OP_TOOLS_SPEC 决定, 模型输出的工具名不在白名单直接丢弃;
+    - doc_id 仍过 hex 格式校验, 防止模型编造;
+    - 返回结构带 via="llm", 供可观测区分路由来源。
+    本函数只做"听懂", 不执行; 高危操作的二次确认在 handle_operation 里不变。
+    """
+    client = _get_router_client()
+    if client is None:
+        return None
+    try:
+        resp = client.chat(
+            messages=[
+                {"role": "system", "content": _OP_ROUTING_SYSTEM},
+                {"role": "user", "content": text[:500]},
+            ],
+            temperature=0.0,
+            max_tokens=200,
+            tools=_OP_TOOLS_SPEC,
+            timeout=8.0,
+        )
+        for call in resp.tool_calls or []:
+            op = call.get("name", "")
+            tool = next((t for t in _OPERATION_TOOLS if t["op"] == op), None)
+            if not tool:
+                continue  # 白名单外, 丢弃
+            import json as _json
+
+            try:
+                args = _json.loads(call.get("arguments") or "{}")
+            except Exception:
+                args = {}
+            doc_id = str(args.get("doc_id") or "").strip()
+            if doc_id and not re.fullmatch(r"[0-9a-f]{12,16}", doc_id, re.IGNORECASE):
+                doc_id = None  # 模型编造的 ID 不采信
+            return {**tool, "doc_id": doc_id, "raw_text": text.strip(), "via": "llm"}
+        return None
+    except Exception as e:  # noqa: BLE001 — 兜底路由失败 → 走原提示话术
+        logging.debug("[operation] LLM 路由兜底失败: %s", str(e)[:120])
+        return None
+
+
+def _get_router_client():
+    if not _ROUTER_CLIENT_CACHE:
+        with _ROUTER_CLIENT_LOCK:
+            if not _ROUTER_CLIENT_CACHE:
+                _ROUTER_CLIENT_CACHE.append(_llm_router_client())
+    return _ROUTER_CLIENT_CACHE[0]
+
+
 def _execute_operation(tool: dict, doc_id: str | None) -> dict:
     """执行已确认的低危/已二次确认的高危操作。"""
     from api.core.document_store import get_document_store
@@ -249,9 +352,16 @@ def handle_operation(text: str, confirm: bool = False, pending_id: str | None = 
         return result
 
     tool = _match_operation(text)
+    routed_by = "rule"
     if not tool:
-        tips = "、".join(t["label"] for t in _OPERATION_TOOLS)
-        return {"answer": f"我支持这些操作: {tips}。请说明你想做什么, 例如\"列出文档列表\"。",
+        # M-A 兜底: 规则未命中 → LLM function calling 路由 (可关, 失败静默)
+        from api.config import settings
+
+        if settings.operation_llm_fallback:
+            tool = _route_operation_via_llm(text)
+            routed_by = "llm"
+    if not tool:
+        return {"answer": f"我支持这些操作: {_ROUTER_TIPS}。请说明你想做什么, 例如\"列出文档列表\"。",
                 "message_type": TYPE_OPERATION, "agent": "operation", "pending_operation": None}
 
     if tool["danger"] and not confirm:
@@ -263,6 +373,7 @@ def handle_operation(text: str, confirm: bool = False, pending_id: str | None = 
                        f"请回复\"确认执行\"并在请求中携带 pending_operation_id={pending_id} 与 confirm=true。"),
             "message_type": TYPE_OPERATION,
             "agent": "operation",
+            "routed_by": routed_by,
             "pending_operation": {"pending_id": pending_id, "op": tool["op"], "label": tool["label"],
                                   "danger": True, "doc_id": tool.get("doc_id")},
         }
@@ -271,6 +382,7 @@ def handle_operation(text: str, confirm: bool = False, pending_id: str | None = 
     result["message_type"] = TYPE_OPERATION
     result["agent"] = "operation"
     result["pending_operation"] = None
+    result["routed_by"] = routed_by
     return result
 
 

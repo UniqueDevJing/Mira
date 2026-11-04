@@ -29,6 +29,7 @@ class LLMResponse:
     completion_tokens: int = 0
     total_tokens: int = 0
     latency_ms: float = 0.0
+    tool_calls: list | None = None  # M-A: function calling 响应（[{id,name,arguments}]）
 
 
 @dataclass
@@ -138,12 +139,24 @@ class _BaseLLMClient:
 
         usage = data.get("usage", {})
 
+        # M-A: function calling 响应（模型决定调用工具时 content 可能为空）
+        raw_calls = message.get("tool_calls") or []
+        tool_calls = [
+            {
+                "id": c.get("id", ""),
+                "name": (c.get("function") or {}).get("name", ""),
+                "arguments": (c.get("function") or {}).get("arguments", "{}"),
+            }
+            for c in raw_calls
+        ]
+
         return LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
+            tool_calls=tool_calls or None,
         )
 
 
@@ -165,8 +178,12 @@ class SyncLLMClient(_BaseLLMClient):
         max_tokens: int = 2000,
         json_mode: bool = False,
         timeout: float | None = None,
+        tools: list | None = None,
     ) -> LLMResponse:
-        """同步发送聊天请求。timeout 覆盖实例默认 (None 用 self.timeout)。"""
+        """同步发送聊天请求。timeout 覆盖实例默认 (None 用 self.timeout)。
+
+        tools: OpenAI function calling 工具定义（M-A 操作路由兜底用）。None=不启用。
+        """
         # 检查熔断器
         if self._is_circuit_open():
             raise CircuitBreakerOpenError("LLM 服务熔断中，请稍后重试")
@@ -176,7 +193,7 @@ class SyncLLMClient(_BaseLLMClient):
 
         for attempt in range(self.max_retries + 1):
             try:
-                response = self._call_llm_sync(messages, temperature, max_tokens, json_mode, timeout)
+                response = self._call_llm_sync(messages, temperature, max_tokens, json_mode, timeout, tools)
                 elapsed_ms = (time.time() - start_time) * 1000
 
                 # 统计 token
@@ -271,6 +288,7 @@ class SyncLLMClient(_BaseLLMClient):
         max_tokens: int,
         json_mode: bool,
         timeout: float | None = None,
+        tools: list | None = None,
     ) -> LLMResponse:
         """同步调用 LLM API。timeout 覆盖实例默认 (None 用 self.timeout)。"""
         payload = {
@@ -281,6 +299,8 @@ class SyncLLMClient(_BaseLLMClient):
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if tools:
+            payload["tools"] = tools
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

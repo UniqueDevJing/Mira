@@ -250,6 +250,12 @@ class Settings(BaseSettings):
     # 留空则进程内生成随机密钥 — 仅防外部 RCE, 不保证跨进程共享。覆盖: RAG_GRAPH_HMAC_SECRET=...
     graph_hmac_secret: str = ""
 
+    # M-A 操作路由 LLM 兜底: 规则模式匹配命中时零延迟直取; 未命中且意图为操作类时,
+    # 降级走一次 function calling 让模型"听懂"要做什么 (工具白名单仍由代码强制,
+    # 高危操作依旧强制人工 confirm——模型只负责路由, 不负责执行)。
+    # 覆盖: RAG_OPERATION_LLM_FALLBACK=false
+    operation_llm_fallback: bool = True
+
     # GraphRAG 总开关 (M4 可证伪化)。图谱增强只有证明增量收益才默认开:
     # 用 scripts/eval_graph_path.py 建"关系路径正确率"评测集, 对比 graph_enabled
     # 开/关的 chunk 召回差; 收益不成立就关掉 (请求级 mode=graph 同时降级为 hybrid)。
