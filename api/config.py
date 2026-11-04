@@ -250,6 +250,12 @@ class Settings(BaseSettings):
     # 留空则进程内生成随机密钥 — 仅防外部 RCE, 不保证跨进程共享。覆盖: RAG_GRAPH_HMAC_SECRET=...
     graph_hmac_secret: str = ""
 
+    # GraphRAG 总开关 (M4 可证伪化)。图谱增强只有证明增量收益才默认开:
+    # 用 scripts/eval_graph_path.py 建"关系路径正确率"评测集, 对比 graph_enabled
+    # 开/关的 chunk 召回差; 收益不成立就关掉 (请求级 mode=graph 同时降级为 hybrid)。
+    # 覆盖: RAG_GRAPH_ENABLED=false
+    graph_enabled: bool = True
+
     model_config = SettingsConfigDict(env_prefix="RAG_", env_file=".env")
 
 

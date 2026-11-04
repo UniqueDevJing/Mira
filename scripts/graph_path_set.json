@@ -1,0 +1,53 @@
+{
+  "_comment": "M4 GraphRAG 可证伪评测集：语料为规则抽取友好的中文句子（实体=技术词表，关系=动词模板）。设计意图：多跳问题 q1/q2 的目标证据 chunk（c2）与问题词面几乎零重叠——关键词基线只能命中种子 chunk，必须靠图谱 2 跳（TokenHub→Redis→MinIO）才能召回；q3 是单跳同 chunk 对照（图谱增量应为 0，诚实标注）；q4 为负控制（图谱不应有任何产出）。expected_triples 用于路径正确率（三元组精确匹配）。注意：离线基线是词面重叠的近似下界，线上真实基线是向量+BM25，结论口径见 docs/graph-falsifiable.md。",
+  "corpus": [
+    {"chunk_id": "c1", "content": "TokenHub 网关使用 Redis 做限流计数。"},
+    {"chunk_id": "c2", "content": "Redis 的快照持久化依赖 MinIO。"},
+    {"chunk_id": "c3", "content": "MinIO 集群使用 Docker Compose 部署。"},
+    {"chunk_id": "c4", "content": "PaddleOCR 解析票据图片中的字段。"},
+    {"chunk_id": "c5", "content": "LanceDB 存储会话记忆向量。"},
+    {"chunk_id": "c6", "content": "客服工单系统每周生成运营周报，由值班同学人工审核。"}
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "question": "TokenHub 的限流计数把状态放在哪里？",
+      "seed_entity": "TokenHub",
+      "expected_triples": [
+        ["TokenHub", "uses", "Redis"],
+        ["Redis", "depends_on", "MinIO"]
+      ],
+      "expected_chunks": ["c1", "c2"],
+      "needs_multihop": true
+    },
+    {
+      "id": "q2",
+      "question": "TokenHub 网关每天的备份文件存在哪里？",
+      "seed_entity": "TokenHub",
+      "expected_triples": [
+        ["TokenHub", "uses", "Redis"],
+        ["Redis", "depends_on", "MinIO"]
+      ],
+      "expected_chunks": ["c2"],
+      "needs_multihop": true
+    },
+    {
+      "id": "q3",
+      "question": "MinIO 用什么方式部署？",
+      "seed_entity": "MinIO",
+      "expected_triples": [
+        ["MinIO", "uses", "Docker"]
+      ],
+      "expected_chunks": ["c3"],
+      "needs_multihop": false
+    },
+    {
+      "id": "q4",
+      "question": "退款政策是多少天？",
+      "seed_entity": null,
+      "expected_triples": [],
+      "expected_chunks": [],
+      "needs_multihop": false
+    }
+  ]
+}

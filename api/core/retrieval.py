@@ -63,7 +63,7 @@ async def _retrieve_context(
     返回 dict: docs/context/degradation/retrieval_ms/rerank_ms/top1_score/
                cross_kb_kbs/retrieval_rounds/rewritten_queries/graph_context[/fused]。
     """
-    if mode == "graph":
+    if mode == "graph" and settings.graph_enabled:
         return await _retrieve_graph_only(question, routing, top_k, start)
     if enable_self_retrieval:
         return await _retrieve_self(question, routing, top_k, start)
@@ -85,8 +85,9 @@ async def _retrieve_context(
     vector_docs, bm25_docs, degradation = await _retrieve_safe(kb, q_emb, bq, top_k, start, mode)
 
     # 图谱增强 (hybrid 模式): 查询侧仅规则抽取, 不付 LLM 成本; 关联 chunk 按 id 回填参与 RRF/Rerank
+    # M4 可证伪化: 总开关 graph_enabled 关闭时跳过图谱腿 (评测证明不了增量收益就关, 见 docs/graph-falsifiable.md)
     graph_ctx = None
-    if mode == "hybrid":
+    if mode == "hybrid" and settings.graph_enabled:
         graph_ctx = await _graph_retrieve_safe(kb, question, top_k, start)
         if graph_ctx:
             fetched = get_vector_store(kb).get_by_ids(list(graph_ctx.get("source_chunks") or [])[:top_k])

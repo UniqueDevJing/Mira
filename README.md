@@ -19,7 +19,7 @@
 - [核心特性](#核心特性)
 - [出口校验：金融数值校验护栏](#出口校验金融数值校验护栏)
 - [质量门禁与评测基线](#质量门禁与评测基线)
-- [运行质量与成本工程（M1–M3）](#运行质量与成本工程m1m3)
+- [运行质量与成本工程（M1–M4）](#运行质量与成本工程m1m4)
 - [架构](#架构)
 - [快速开始](#快速开始)
 - [API 示例](#api-示例)
@@ -116,9 +116,9 @@ python scripts/eval_finance_adversarial.py
 
 ---
 
-## 运行质量与成本工程（M1–M3）
+## 运行质量与成本工程（M1–M4）
 
-门禁回答"现在好不好"，这一层回答"**坏了是哪类坏、为什么、修复动作是什么**"。
+门禁回答"现在好不好"，这一层回答"**坏了是哪类坏、为什么、修复动作是什么**"，以及"哪些组件配不上它们的复杂度"。
 
 ### M1 · 错误账本与幻觉归因（`api/core/error_ledger.py`）
 
@@ -153,6 +153,19 @@ Prometheus 计数器 `rag_m1_badcase_total{cls}`（可接 Grafana 出趋势）�
 - 分位用 nearest-rank；成功样本不足时 P99 如实标注「仅供参考」
 
 `docs/performance-benchmark.md` 已同步修正口径（含"顺序"误标为"并发 30"的更正说明）。
+
+### M4 · GraphRAG 可证伪化（`scripts/eval_graph_path.py`）
+
+关系推理最容易变玄学——所以给它一条**可复现的判定程序**：关系路径正确率评测集
+（多跳问题词面零重叠 / 单跳对照 / 负控制）+ `RAG_GRAPH_ENABLED` 总开关。
+
+```bash
+python scripts/eval_graph_path.py
+# 路径正确率 1.0 ｜ 多跳增量 gain +0.75 ｜ 单跳增量 0（诚实对照）
+# 结论: RAG_GRAPH_ENABLED 保持 true —— 若部署环境实测增量消失，关掉零代码改动
+```
+
+开/关收益差的判定规则与口径边界见 [docs/graph-falsifiable.md](docs/graph-falsifiable.md)。
 
 ---
 
@@ -233,8 +246,8 @@ curl -X POST http://127.0.0.1:8000/api/v1/qa/ask \
 api/            FastAPI 应用 · 路由 · 编排 · 多Agent · 记忆层 · 护栏 · 错误账本(error_ledger)
 engines/        检索(向量/BM25/融合/重排) · 图谱 · 分块 · 路由 · 文档类型
 web/            零依赖原生 JS 前端 (流式 SSE + Agent 切换条 + 工单卡片)
-scripts/        评测(gate/routing/kb) · 压测(bench_ttft) · 帕累托扫描(pareto_sweep) · 错误账本报告(m1_ledger_report) · 入库 · 闭环探针
-docs/           评测报告(EVALUATION) · 压测口径(performance-benchmark) · 成本-质量帕累托(cost-quality-pareto)
+scripts/        评测(gate/routing/kb) · 压测(bench_ttft) · 帕累托扫描(pareto_sweep) · 图谱路径评测(eval_graph_path) · 错误账本报告(m1_ledger_report) · 入库 · 闭环探针
+docs/           评测报告(EVALUATION) · 压测口径(performance-benchmark) · 成本-质量帕累托(cost-quality-pareto) · 图谱可证伪(graph-falsifiable)
 tests/          534 用例 · PDF fixtures · 评测回归
 .github/        CI (test-ci + eval-routing + recall-gate)
 ```
