@@ -27,7 +27,8 @@ python scripts/load_test.py --url http://127.0.0.1:8911 \
     --question "退货流程是什么" --concurrency 20 --requests 200
 
 # 首 token 延迟（TTFT，命中 SSE 首个 delta 事件）
-python scripts/bench_ttft.py --url http://127.0.0.1:8911 --requests 30
+# 默认顺序单发（编排层基线）；--concurrency 调并发；失败请求单独计数并排除出分位
+python scripts/bench_ttft.py --url http://127.0.0.1:8911 --requests 100 --concurrency 1
 
 # 语义缓存命中率（直测 QACache，无模型）
 PYTHONPATH=. python scripts/bench_cache.py
@@ -39,7 +40,13 @@ PYTHONPATH=. python scripts/bench_cache.py
 |---|---|---|---|---|---|---|---|---|
 | 端到端（load_test） | 5 | 50 | 3.2 | 1498 | 2017 | 2017 | 2017 | 200/200 |
 | 端到端（load_test） | 20 | 200 | 5.7 | 3397 | 4644 | 4649 | 4670 | 200/200 |
-| TTFT（bench_ttft） | 顺序 | 30 | — | 1446 | 1494 | 1514 | 1514 | 200/200 |
+| TTFT（bench_ttft） | 并发 30（原实测，标签已更正） | 30 | — | 1446 | 1494 | 1514 | 1514 | 200/200 |
+
+> **口径说明（修复协同评审 P0-3/4/5）**：
+> - 上表 TTFT 一行原标「顺序」，实际 `bench_ttft.py` 一次性并发 30 条，故 P50≈1446ms 是**并发 30 下的 TTFT**，非顺序值。实测时默认已改为 `--concurrency 1`（顺序单发）。
+> - 失败请求（异常 / HTTP 非 200）现在**单独计数并排除出分位**，不再被计为高延迟成功样本；脚本额外输出失败率。
+> - 分位改用 **nearest-rank**；成功样本 < 100 时 P99 标注「仅供参考」。默认 `--requests 100`、`--warmup 3`（预热丢弃，排除连接建立 / 服务冷启动）。
+> - 重新跑同一套脚本即可得到顺序 / 并发两档、且口径诚实的 TTFT 数字。
 
 - **TTFT ≈ 1.45s（P50）**：从发请求到 SSE 首个 `delta` 事件。该值已基本是「路由 + 编排启动 + 首块产出」的编排层开销——fake LLM 块间仅 15ms sleep，故真实模型的首字延迟会在此基础上**叠加**模型推理首字时间。
 - **单请求编排开销地板 ≈ 1.5s（低并发 P50）**，并发 20 时恶化到 ~3.4s：单 worker 在更高并发下存在序列化点（QA 日志落盘 / 会话与记忆存储 / 文档存储写操作的同步段），是后续可优化项；生产多 worker 可摊薄但需 Redis 共享状态（`RAG_SHARED_STATE_BACKEND=redis`）。
