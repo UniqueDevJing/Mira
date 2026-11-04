@@ -1,0 +1,21 @@
+{
+  "tool": "load_test",
+  "ts": "2026-11-03T07:00:00Z",
+  "commit": "40e4cf4",
+  "note": "基线来源：docs/performance-benchmark.md §2（fake-LLM 桩服务 scripts/it_backend_fakellm.py，单 uvicorn worker）。非真实模型基线，仅用于『同一套桩 + 同一台机』下的相对回归判定。",
+  "concurrency": 20,
+  "requests": 200,
+  "ok": 200,
+  "failed": 0,
+  "failure_rate": 0.0,
+  "qps": 5.7,
+  "latency_ms_p50": 3397.0,
+  "latency_ms_p95": 4644.0,
+  "latency_ms_p99": 4649.0,
+  "latency_ms_max": 4670.0,
+  "ttft_tool": "bench_ttft",
+  "ttft_concurrency": 1,
+  "ttft_ms_p50": 1446.0,
+  "ttft_ms_p95": 1494.0,
+  "ttft_ms_p99": 1514.0
+}

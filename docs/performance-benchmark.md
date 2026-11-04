@@ -82,3 +82,37 @@ PYTHONPATH=. python scripts/bench_cache.py
 2. 当前数字为 **fake-LLM 桩基线**，隔离出服务+编排层开销（TTFT≈1.45s、低并发 P50≈1.5s、并发 20 P50≈3.4s）。**不是生产 P95**——真实 LLM 推理会在其上叠加。
 3. 压测路径 `degradation_level=3` 与单 worker 下的延迟抬升均为桩/并发环境产物，非生产缺陷信号；生产多 worker + 真实模型重测即可拿到端到端数字。
 4. 下一步拿真值：配 `LLM_API_KEY` 起 `api/main.py` + 挂载语料，复用 `load_test.py` / `bench_ttft.py` 直接得到生产 QPS/P95/TTFT。
+
+## 5. 性能回归门禁（P1 · Round 3）
+
+**采集（结果落 JSON，含 commit/并发/样本量/分位/失败率）**
+
+```bash
+python scripts/load_test.py --url http://127.0.0.1:8911 --concurrency 20 --requests 200 \
+    --out docs/benchmarks/load-$(git rev-parse --short HEAD).json
+python scripts/bench_ttft.py --url http://127.0.0.1:8911 --requests 100 --concurrency 1 \
+    --out docs/benchmarks/ttft-$(git rev-parse --short HEAD).json
+```
+
+**比对（超阈值即 exit 1，可直接接 CI 任务）**
+
+```bash
+python scripts/check_bench_regression.py \
+    --baseline docs/benchmarks/baseline.json \
+    --current docs/benchmarks/load-abc1234.json \
+    --metric latency_ms_p95 --max-regression 0.10
+```
+
+**判定规则（不允许"无声通过"）**
+
+| 情形 | 结论 |
+|---|---|
+| 延迟类指标（`*_ms_p*`）**上升** > `--max-regression` | FAIL |
+| 吞吐（`qps`）**下降** > `--max-regression`（方向自动反转） | FAIL |
+| 失败率绝对增量 > `--max-failure-delta`（默认 2pp） | FAIL |
+| 指标在任一侧缺失 / 本次无成功样本 / 并发口径不一致 | FAIL（并说明原因） |
+
+- **基线**：`docs/benchmarks/baseline.json`（来源即本文 §2，同桩同机做**相对**判定；换机器/换桩需重新采基线）
+- **CI 自测**：`tests/test_bench_gate_pytest.py`（12 例：分位数口径、延迟/吞吐方向反转、指标缺失、并发不一致、零成功样本）
+
+> 实测（2026-11-04，fake-LLM 桩同机两轮）：同一基线两次运行 -50.9% → PASS；把当前 P95 人为放大 50% → +50.0% → FAIL(exit 1)。

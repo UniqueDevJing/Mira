@@ -26,6 +26,7 @@ import json
 import math
 import time
 
+import bench_common as bc
 import httpx
 
 DEFAULT_QUESTION = "退货流程是什么"
@@ -113,6 +114,21 @@ async def _run(url: str, question: str, total: int, concurrency: int, warmup: in
         print("TTFT(ms)  无成功样本（全部失败）")
     print(f"失败 HTTP 状态: {fail_codes if fail_codes else '无'}")
 
+    return bc.build_payload(
+        "bench_ttft",
+        url=url,
+        question=question,
+        concurrency=concurrency,
+        warmup=warmup,
+        requests=n_total,
+        ok=n_ok,
+        failed=n_fail,
+        failure_rate=round((n_fail / n_total), 4) if n_total else 0.0,
+        failure_codes={str(k): v for k, v in fail_codes.items()},
+        wall_s=round(wall, 3),
+        **bc.summarize(ttfts, "ttft_ms"),
+    )
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -123,9 +139,11 @@ def main():
                     help="并发数：1=顺序单发（默认，测编排层基线），>1=并发压测")
     ap.add_argument("--warmup", type=int, default=3,
                     help="预热请求数（丢弃，不计入分位）；排除连接建立/冷启动")
+    ap.add_argument("--out", default="", help="结果 JSON 落盘路径（供阈值门禁比对）")
     args = ap.parse_args()
-    asyncio.run(_run(args.url.rstrip("/"), args.question,
-                    args.requests, args.concurrency, args.warmup))
+    payload = asyncio.run(_run(args.url.rstrip("/"), args.question,
+                               args.requests, args.concurrency, args.warmup))
+    bc.emit(args.out, payload)
 
 
 if __name__ == "__main__":
