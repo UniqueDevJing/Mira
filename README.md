@@ -19,6 +19,7 @@
 - [核心特性](#核心特性)
 - [出口校验：金融数值校验护栏](#出口校验金融数值校验护栏)
 - [质量门禁与评测基线](#质量门禁与评测基线)
+- [运行质量与成本工程（M1–M3）](#运行质量与成本工程m1m3)
 - [架构](#架构)
 - [快速开始](#快速开始)
 - [API 示例](#api-示例)
@@ -115,6 +116,46 @@ python scripts/eval_finance_adversarial.py
 
 ---
 
+## 运行质量与成本工程（M1–M3）
+
+门禁回答"现在好不好"，这一层回答"**坏了是哪类坏、为什么、修复动作是什么**"。
+
+### M1 · 错误账本与幻觉归因（`api/core/error_ledger.py`）
+
+RAG badcase 不是笼统的"答错了"，而是五类**可确定性分类**的故障模式，每类带归因规则与修复动作：
+
+| 分类 | 含义 | 自动归因 / 修复动作 |
+|---|---|---|
+| `no_recall` | 检索空转 | 查召回层：知识库缺语料 → 提示入库 |
+| `false_refusal` | 有来源却拒答 | 护栏阈值过严 → 建议调 `confidence_floor` |
+| `number_rewritten` | 数字被改写 | 数值护栏裁决链复现 → 定位改写环节 |
+| `low_rank` | 正确来源没进 top-k | rerank 权重问题 → 建议调融合参数 |
+| `context_truncated` | 上下文被裁掉关键段 | 截断标记 + 长度记录 → 建议调 `MIRA_CONTEXT_CHARS` |
+
+接入两条链路（pre-guard 拒答 + 主路径），进程内环形缓冲 + JSONL 账本落盘 +
+Prometheus 计数器 `rag_m1_badcase_total{cls}`（可接 Grafana 出趋势）。
+报告一键生成：`python scripts/m1_ledger_report.py`。13 个 pytest 用例覆盖五类分类。
+
+### M2 · 成本-质量帕累托（`scripts/pareto_sweep.py`）
+
+回答"**这个配置为什么值得**"：对（模型档位 × 召回深度 top-k × 上下文长度）做 27 点网格扫描，
+用质量分（faithfulness + answer_relevance）与成本（chars/2 × 档位单价）画帕累托前沿——
+选型不靠感觉，靠"非支配点 + 为什么选这一点"。上下文长度已参数化（`MIRA_CONTEXT_CHARS`），
+`--dry-run` 可离线验证网格；`docs/cost-quality-pareto.md` 记录方法与前沿判读方式。
+
+### M3 · 压测口径修正（`scripts/bench_ttft.py`）
+
+压测数字只有在口径诚实时才有意义。修正后的 TTFT 基准：
+
+- `--concurrency` 显式声明顺序 / 并发（默认顺序基线；并发模式结果必须标注"并发 N"）
+- **失败请求（异常 / 非 200）排除出延迟分位**，单独输出失败率——不把失败伪装成高延迟
+- `--warmup 3` 预热丢弃，排除冷启动；默认 100 请求
+- 分位用 nearest-rank；成功样本不足时 P99 如实标注「仅供参考」
+
+`docs/performance-benchmark.md` 已同步修正口径（含"顺序"误标为"并发 30"的更正说明）。
+
+---
+
 ## 架构
 
 ```mermaid
@@ -189,10 +230,11 @@ curl -X POST http://127.0.0.1:8000/api/v1/qa/ask \
 ## 项目结构
 
 ```
-api/            FastAPI 应用 · 路由 · 编排 · 多Agent · 记忆层 · 护栏
+api/            FastAPI 应用 · 路由 · 编排 · 多Agent · 记忆层 · 护栏 · 错误账本(error_ledger)
 engines/        检索(向量/BM25/融合/重排) · 图谱 · 分块 · 路由 · 文档类型
 web/            零依赖原生 JS 前端 (流式 SSE + Agent 切换条 + 工单卡片)
-scripts/        评测(gate/routing/kb) · 守护启动 · 入库 · 闭环探针
+scripts/        评测(gate/routing/kb) · 压测(bench_ttft) · 帕累托扫描(pareto_sweep) · 错误账本报告(m1_ledger_report) · 入库 · 闭环探针
+docs/           评测报告(EVALUATION) · 压测口径(performance-benchmark) · 成本-质量帕累托(cost-quality-pareto)
 tests/          534 用例 · PDF fixtures · 评测回归
 .github/        CI (test-ci + eval-routing + recall-gate)
 ```
