@@ -179,6 +179,9 @@ class Settings(BaseSettings):
     # 标定依据(对 documents 全表实测): 真命中 top1∈[0.50,1.0], 错误/无关命中 top1∈[0.34,0.50];
     # 0.50 为清晰分界, 低于即判定答非所问风险, 改为"未找到相关内容"而非生成错误答案。
     answer_confidence_floor: float = 0.50
+    # M2 成本-质量帕累托：送入 LLM 的每段上下文截断长度（字符），可经 MIRA_CONTEXT_CHARS 覆盖。
+    # 默认 800 与历史行为一致；网格扫描时取 800/1600/3200 观察质量-成本权衡。
+    context_chars: int = 800
     # 忠实度护栏是否启用 embedding 语义信号 (同义改写不再被词重合误拒)。关闭则退回纯词重合。
     fidelity_use_embedding: bool = True
     # 数字硬校验: 关闭 — 中文区间(3至5)、乱码文本、推算数字会导致高误拒;

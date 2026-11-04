@@ -499,8 +499,8 @@ def _build_context(docs: list, top_k: int = 5) -> tuple[str, list]:
     for i, (did, g) in enumerate(groups.items()):
         chain = " > ".join(g["title_chain"]) if g["title_chain"] else g["doc_title"]
         raw = "\n\n".join(g["chunks"])
-        content = raw[:800]
-        truncated = len(raw) > 800
+        content = raw[:settings.context_chars]
+        truncated = len(raw) > settings.context_chars
         label = f"[来源{i + 1}] {chain}" if chain else f"[来源{i + 1}]"
         parts.append(f"{label}\n【片段开始】\n{content}\n【片段结束】")
         sources.append({
