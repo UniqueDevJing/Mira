@@ -3,15 +3,12 @@
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from engines.common.llm_client import LLMResponse
 
 import api.core.agents as agents
 from api.config import settings
 from api.core.agents import handle_operation
+from engines.common.llm_client import LLMResponse
 
 
 def _llm_response(tool_name, arguments="{}"):
