@@ -121,22 +121,72 @@ def public_sources(docs: list[dict]) -> list[dict]:
     return [{k: v for k, v in d.items() if k != "context_full"} for d in docs]
 
 
+def build_image_sources(hits: list[dict], *, limit: int = 3) -> list[dict]:
+    """把图检索命中转成前端可渲染的 sources 项（type=image）。
+
+    与文本 source 的区别：图片必须带 thumb_url 与溯源（source/page），
+    否则前端无法显示、评审也无法判断这张图是否可信。
+    """
+    items: list[dict] = []
+    for hit in hits[:limit]:
+        asset_id = hit.get("asset_id") or ""
+        if not asset_id:
+            continue
+        items.append(
+            {
+                "type": "image",
+                "asset_id": asset_id,
+                "thumb_url": f"/api/v1/images/{asset_id}",
+                "caption": hit.get("caption", ""),
+                "score": hit.get("score", 0.0),
+                "source": hit.get("source", ""),
+                "page": hit.get("page", 0),
+                "width": hit.get("width", 0),
+                "height": hit.get("height", 0),
+            }
+        )
+    return items
+
+
+def merge_image_sources(sources: list[dict], image_sources: list[dict], *, limit: int = 3) -> list[dict]:
+    """文本 sources 在前、图片 sources 在后；按 asset_id 去重并限制图片数量。
+
+    顺序刻意固定：前端按顺序渲染，图片插在中间会让文本引用编号错位。
+    """
+    merged = list(sources)
+    seen = {s.get("asset_id") for s in merged if s.get("type") == "image"}
+    added = 0
+    for item in image_sources:
+        if added >= limit:
+            break
+        if item.get("asset_id") in seen:
+            continue
+        merged.append(item)
+        seen.add(item.get("asset_id"))
+        added += 1
+    return merged
+
+
 def build_sources_event(
     docs: list[dict],
     top1_score: float,
     cross_kb_kbs: list[str] | None,
     degradation_level: int,
     final: bool = True,
+    image_hits: list[dict] | None = None,
 ) -> dict:
     """流式首个事件: 先把检索来源发给前端展示。
 
     final=False 表示这是"重排前"的临时来源 (见 stream_sources_before_rerank):
     rerank 完成后会再发一次 final=True 的同类型事件覆盖它。前端按整体替换渲染, 无副作用。
     """
+    text_sources = public_sources(docs)
+    images = build_image_sources(image_hits or [])
     return {
         "type": "sources",
-        "sources": public_sources(docs),
+        "sources": merge_image_sources(text_sources, images),
         "final": final,
+        "image_count": len(images),
         "retrieval_meta": build_retrieval_meta(top1_score, len(docs), cross_kb_kbs, degradation_level),
     }
 

@@ -19,7 +19,7 @@ from api.core.response import build_done_event, build_sources_event
 
 API_DIR = pathlib.Path(__file__).resolve().parents[1] / "api"
 
-SOURCES_KEYS = {"type", "sources", "final", "retrieval_meta"}
+SOURCES_KEYS = {"type", "sources", "final", "image_count", "retrieval_meta"}
 DONE_KEYS = {
     "type",
     "answer",

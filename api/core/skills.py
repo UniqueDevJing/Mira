@@ -41,6 +41,7 @@ from api.core.guardrails import (
     _guard_faithfulness,
     _pregeneration_hallucination_guard_async,
 )
+from api.core.image_context import image_sources
 from api.core.llm_client import (
     CircuitBreakerOpenError,
     LLMClient,
@@ -811,7 +812,8 @@ async def _stream_rag(
         )
     if defer:
         yield build_sources_event(retr["docs"], retr["top1_score"], retr["cross_kb_kbs"],
-                                 retr["degradation"], final=False)
+                                 retr["degradation"], final=False,
+                                 image_hits=image_sources(question))
         retr = await _apply_deferred_rerank(retr, routing.kb, question, top_k, start)
 
     docs = retr["docs"]
@@ -821,7 +823,8 @@ async def _stream_rag(
     top1_score = retr["top1_score"]
 
     # 重排完成, 发最终 sources (前端整体替换, 覆盖上面的临时来源)
-    yield build_sources_event(docs, top1_score, cross_kb_kbs, degradation)
+    yield build_sources_event(docs, top1_score, cross_kb_kbs, degradation,
+                             image_hits=image_sources(question))
 
     # 生成前幻觉护栏 (幻觉前置 #4): 置信度下限 / 上下文零重合 → 直接拒答, 不流式生成错误答案
     pre_reason = await _pregeneration_hallucination_guard_async(question, docs, top1_score)
