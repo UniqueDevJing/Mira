@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from api.middleware.security import APIKeyMiddleware, error_sanitization_handler
-from api.routes import auth, documents, qa
+from api.routes import auth, documents, images, qa
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,7 @@ if limiter is not None:
 app.include_router(documents.router)
 app.include_router(qa.router)
 app.include_router(auth.router)
+app.include_router(images.router)
 
 # 前端静态资源 (common.js / icons.js / markdown.js / common.css) — 去除 Font Awesome CDN 依赖, 离线可用
 from fastapi.staticfiles import StaticFiles
